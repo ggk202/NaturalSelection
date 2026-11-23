@@ -27,19 +27,23 @@ export function createBrain(rng, links = rng.int(4, 8), inputs = null) {
     const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    conns.push({ from, to, w: rng.gauss(), on: true });
+    conns.push({ from, to, w: rng.gauss(), on: true, p: 0 });
   }
-  return { nodes: ioNodes(), conns };
+  return { nodes: ioNodes(), conns, lr: rng.range(0, 0.1) };
 }
 
-export const cloneBrain = (b) => ({ nodes: b.nodes.map((n) => ({ ...n })), conns: b.conns.map((c) => ({ ...c })) });
+export const cloneBrain = (b) => ({ nodes: b.nodes.map((n) => ({ ...n })), conns: b.conns.map((c) => ({ ...c })), lr: b.lr ?? 0 });
 
 // rate: the world mutation rate (0.08 default). probs overrides per-birth structural probabilities (tests).
 export function mutateBrain(b, rate, rng, nextId, probs = null) {
   const m = cloneBrain(b), scale = rate / 0.08;
   const p = probs ? { addConn: 0, addNode: 0, toggle: 0, removeNode: 0, jitter: rate, ...probs }
     : { ...Object.fromEntries(Object.entries(BASE_RATES).map(([k, v]) => [k, v * scale])), jitter: rate };
-  for (const c of m.conns) if (rng.next() < p.jitter) c.w = rng.next() < 0.1 ? rng.gauss() : c.w + rng.gauss() * 0.3;
+  for (const c of m.conns) {
+    if (rng.next() < p.jitter) c.w = rng.next() < 0.1 ? rng.gauss() : c.w + rng.gauss() * 0.3;
+    if (rng.next() < p.jitter) c.p = Math.max(-1, Math.min(1, (c.p || 0) + rng.gauss() * 0.3));
+  }
+  if (rng.next() < p.jitter) m.lr = Math.max(0, Math.min(0.3, m.lr + rng.gauss() * 0.03));
   for (const n of m.nodes) {
     if (n.type === 'in' || rng.next() >= p.jitter) continue;
     n.bias += rng.gauss() * 0.2;
@@ -50,7 +54,7 @@ export function mutateBrain(b, rate, rng, nextId, probs = null) {
     const targets = m.nodes.filter((n) => n.type !== 'in');
     const to = targets[rng.int(0, targets.length - 1)].id;
     const existing = m.conns.find((c) => c.from === from && c.to === to);
-    if (existing) existing.on = true; else m.conns.push({ from, to, w: rng.gauss() * 0.5, on: true });
+    if (existing) existing.on = true; else m.conns.push({ from, to, w: rng.gauss() * 0.5, on: true, p: 0 });
   }
   const enabled = m.conns.filter((c) => c.on);
   if (rng.next() < p.addNode && enabled.length) {
@@ -58,7 +62,7 @@ export function mutateBrain(b, rate, rng, nextId, probs = null) {
     const c = enabled[rng.int(0, enabled.length - 1)], id = nextId();
     c.on = false;
     m.nodes.push({ id, type: 'hid', bias: 0, tau: 1 });
-    m.conns.push({ from: c.from, to: id, w: 1, on: true }, { from: id, to: c.to, w: c.w, on: true });
+    m.conns.push({ from: c.from, to: id, w: 1, on: true, p: 0 }, { from: id, to: c.to, w: c.w, on: true, p: c.p || 0 });
   }
   if (rng.next() < p.toggle && m.conns.length) { const c = m.conns[rng.int(0, m.conns.length - 1)]; c.on = !c.on; }
   const hid = m.nodes.filter((n) => n.type === 'hid');
@@ -100,10 +104,14 @@ function compile(b) {
   let k = compiled.get(b);
   if (k) return k;
   const index = new Map(b.nodes.map((n, i) => [n.id, i]));
-  const incoming = b.nodes.map(() => []);
-  for (const c of b.conns) if (c.on) incoming[index.get(c.to)].push(index.get(c.from), c.w);
+  const incoming = b.nodes.map(() => []), plastic = [];
+  b.conns.forEach((c, ci) => {
+    if (!c.on) return;
+    incoming[index.get(c.to)].push(index.get(c.from), ci);
+    if (c.p) plastic.push(ci, index.get(c.from), index.get(c.to), c.p);
+  });
   const outIdx = Array.from({ length: N_OUT }, (_, o) => index.get(N_IN + o));
-  k = { index, incoming, outIdx, scratch: new Float32Array(b.nodes.length) };
+  k = { index, incoming, outIdx, plastic, weights: initWeights(b), scratch: new Float32Array(b.nodes.length) };
   compiled.set(b, k);
   return k;
 }
@@ -111,17 +119,31 @@ function compile(b) {
 export const newState = (b) => new Float32Array(b.nodes.length);
 
 // One synchronous update from the previous activations (so loops carry memory), with leaky integration.
-export function runBrain(b, state, inputs, out) {
-  const { incoming, outIdx, scratch } = compile(b), nodes = b.nodes;
+// Genome weights as a per-connection array; creatures learn on their own copy.
+export const initWeights = (b) => Float32Array.from(b.conns, (c) => c.w);
+
+export function runBrain(b, state, inputs, out, weights = null) {
+  const k = compile(b), { incoming, outIdx, scratch } = k, nodes = b.nodes, w = weights || k.weights;
   for (let i = 0; i < N_IN; i++) state[i] = inputs[i]; // input nodes are always ids 0..N_IN-1 at indices 0..N_IN-1
   scratch.set(state);
   for (let j = N_IN; j < nodes.length; j++) {
     const n = nodes[j], inc = incoming[j];
     let s = n.bias;
-    for (let k = 0; k < inc.length; k += 2) s += inc[k + 1] * scratch[inc[k]];
+    for (let q = 0; q < inc.length; q += 2) s += w[inc[q + 1]] * scratch[inc[q]];
     const target = n.type === 'out' && n.id !== N_IN ? 1 / (1 + Math.exp(-s)) : Math.tanh(s);
     state[j] = n.tau === 1 ? target : state[j] + (target - state[j]) / n.tau;
   }
   for (let o = 0; o < N_OUT; o++) out[o] = state[outIdx[o]];
   return out;
+}
+
+// Reward-modulated Hebbian update on a creature's working weights, after runBrain:
+// pre = activation that fed this step, post = new activation. Weights stay within ±4.
+export function learn(b, state, weights, reward) {
+  if (!b.lr || !reward) return;
+  const { plastic, scratch } = compile(b), rate = b.lr * reward;
+  for (let q = 0; q < plastic.length; q += 4) {
+    const ci = plastic[q];
+    weights[ci] = Math.max(-4, Math.min(4, weights[ci] + rate * plastic[q + 3] * scratch[plastic[q + 1]] * state[plastic[q + 2]]));
+  }
 }
