@@ -123,7 +123,8 @@ checks['tap inspects creature'] = async ({ page, base, assert, errors }) => {
     window.__app.paused = true;
     const w = window.__world, v = window.__view;
     const c = w.creatures.reduce((a, b) => (Math.hypot(b.x - 50, b.z - 50) < Math.hypot(a.x - 50, a.z - 50) ? b : a));
-    v.controls.target.set(c.x, 0, c.z); v.camera.position.set(c.x, 12, c.z + 10); v.controls.update();
+    const h = w.terrain.heightAt(c.x, c.z);
+    v.controls.target.set(c.x, h, c.z); v.camera.position.set(c.x, h + 12, c.z + 10); v.controls.update();
     return c.id;
   });
   await page.waitForTimeout(200);
