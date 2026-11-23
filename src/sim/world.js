@@ -1,5 +1,5 @@
 import { createRng } from './rng.js';
-import { randomGenome, mutate } from './genome.js';
+import { randomGenome, mutate, cloneGenome } from './genome.js';
 import { deriveStats } from './body.js';
 import { think, INPUTS, OUTPUTS } from './brain.js';
 import { Grid } from './grid.js';
@@ -82,8 +82,9 @@ export class World {
 
   sense(c, out) {
     this.nearest(c, this.foodGrid, null, out, 0);
-    out[2] = 1; out[3] = 0; out[4] = 1; out[5] = 0; // prey/threat: see predation
-    const b = c.genome.body;
+    const b = c.genome.body, st = c.stats;
+    this.nearest(c, this.creatureGrid, (o) => o.stats.defense < st.attack, out, 2);
+    c.threatNear = this.nearest(c, this.creatureGrid, (o) => o.stats.attack > st.defense, out, 4);
     this.nearest(c, this.creatureGrid, (o) => Math.abs(o.genome.body.diet - b.diet) < 0.25 && Math.abs(o.genome.body.size - b.size) < 0.4, out, 6);
     out[8] = c.energy / c.stats.maxEnergy;
     out[9] = 0; // temperature: see environment
@@ -146,7 +147,9 @@ export class World {
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
       c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size) * dt;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
+      if (c.threatNear && throttle > 0.3 && Math.abs(inp[5]) > 0.5) c.actionCounters.fled++;
       this.eat(c);
+      if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
       if (o[3] > 0.5) this.reproduce(c);
       c.age += dt;
     }
@@ -161,6 +164,37 @@ export class World {
     this.food = this.food.filter((f) => !f.eaten);
     this.respawn();
     this.time += dt;
+  }
+
+  attack(c) {
+    c.energy -= 0.02 * this.settings.dt;
+    const reach = 0.6 * c.genome.body.size;
+    let target = null, best = Infinity;
+    this.creatureGrid.query(c.x, c.z, reach + 1, (o) => {
+      if (o === c || !o.alive) return;
+      const dx = this.delta(c.x, o.x), dz = this.delta(c.z, o.z), d = Math.hypot(dx, dz);
+      if (d <= reach + 0.5 * o.genome.body.size && d < best) { best = d; target = o; }
+    });
+    if (!target) return;
+    c.actionCounters.attacked++;
+    target.energy -= c.stats.attack * this.settings.dt * 5;
+    if (target.energy > 0) return;
+    target.alive = false;
+    c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.6 * target.stats.maxEnergy * c.stats.digestMeat);
+    this.emit({ type: 'kill', killerId: c.id, victimId: target.id });
+    this.emit({ type: 'death', id: target.id, cause: 'killed' });
+    this.recordElite(target);
+  }
+
+  seedPredators(n) {
+    const W = this.settings.worldSize;
+    for (let i = 0; i < n; i++) {
+      const src = this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng);
+      const g = cloneGenome(src);
+      g.body.diet = 0.9; g.body.mouth = Math.max(g.body.mouth, 1.2);
+      this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
+    }
+    this.emit({ type: 'god', action: 'seedPredators', n });
   }
 
   recordElite(c) {
