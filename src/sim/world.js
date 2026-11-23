@@ -3,6 +3,7 @@ import { randomGenome, mutate, cloneGenome } from './genome.js';
 import { deriveStats } from './body.js';
 import { think, INPUTS, OUTPUTS } from './brain.js';
 import { Grid } from './grid.js';
+import { Environment, DEFAULT_ENV } from './environment.js';
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 100, initialCreatures: 60, maxCreatures: 400,
@@ -16,7 +17,7 @@ const inp = new Float32Array(INPUTS.length);
 
 export class World {
   constructor(settings = {}) {
-    this.settings = { ...DEFAULT_SETTINGS, ...settings };
+    this.settings = { ...DEFAULT_SETTINGS, ...settings, env: { ...DEFAULT_ENV, ...settings.env } };
     this.reseed();
   }
 
@@ -31,6 +32,7 @@ export class World {
     this.elite = []; // top parents by child count: { genome, children }
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
+    this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
     for (let i = 0; i < s.initialCreatures; i++) {
       this.spawn(randomGenome(this.rng), this.rng.range(0, s.worldSize), this.rng.range(0, s.worldSize));
     }
@@ -87,8 +89,12 @@ export class World {
     c.threatNear = this.nearest(c, this.creatureGrid, (o) => o.stats.attack > st.defense, out, 4);
     this.nearest(c, this.creatureGrid, (o) => Math.abs(o.genome.body.diet - b.diet) < 0.25 && Math.abs(o.genome.body.size - b.size) < 0.4, out, 6);
     out[8] = c.energy / c.stats.maxEnergy;
-    out[9] = 0; // temperature: see environment
-    out[10] = 1; // hazardDist: see environment
+    out[9] = this.env.temperature(this.time, c.x, c.z);
+    out[10] = 1;
+    for (const h of this.env.hazards) {
+      const d = Math.max(0, Math.hypot(this.delta(c.x, h.x), this.delta(c.z, h.z)) - h.r) / st.senseRange;
+      if (d < out[10]) out[10] = d;
+    }
     out[11] = 1;
     return out;
   }
@@ -99,7 +105,7 @@ export class World {
   }
 
   spawnFood(dt) {
-    const expected = this.settings.foodRate * dt;
+    const expected = this.settings.foodRate * dt * this.env.foodMultiplier(this.time);
     let n = Math.floor(expected) + (this.rng.next() < expected % 1 ? 1 : 0);
     const W = this.settings.worldSize;
     while (n-- > 0) this.addFoodAt(this.rng.range(0, W), this.rng.range(0, W));
@@ -145,7 +151,7 @@ export class World {
       const v = throttle * st.speed;
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
-      c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size) * dt;
+      c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
       if (c.threatNear && throttle > 0.3 && Math.abs(inp[5]) > 0.5) c.actionCounters.fled++;
       this.eat(c);
@@ -164,6 +170,26 @@ export class World {
     this.food = this.food.filter((f) => !f.eaten);
     this.respawn();
     this.time += dt;
+  }
+
+  // Extra energy/s from temperature and hazards; reuses the temperature/hazard inputs just sensed.
+  envCost(c, sensed) {
+    const t = sensed[9], st = c.stats, cfg = this.settings.env;
+    let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist));
+    if (sensed[10] === 0) cost += cfg.hazardDamage;
+    return cost;
+  }
+
+  addHazard(x, z, r) {
+    const h = { id: this.nextId++, x: this.wrap(x), z: this.wrap(z), r };
+    this.env.hazards.push(h);
+    this.emit({ type: 'god', action: 'addHazard', id: h.id });
+    return h.id;
+  }
+
+  removeHazard(id) {
+    this.env.hazards = this.env.hazards.filter((h) => h.id !== id);
+    this.emit({ type: 'god', action: 'removeHazard', id });
   }
 
   attack(c) {
