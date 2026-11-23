@@ -92,3 +92,30 @@ test('the mouth eats food it touches', () => {
   w.step();
   assert.equal(w.food.length, 0);
 });
+
+test('physical worlds hold 3× the food density (slow movers meet less food)', () => {
+  const k = new World({ ...P, maxFood: 100, foodRate: 10 }), p = new World({ ...P, locomotion: 'physical', maxFood: 100, foodRate: 10 });
+  const kin = new World({ ...P, locomotion: 'kinematic', maxFood: 100, foodRate: 10 });
+  assert.equal(p.foodCap, 3 * kin.foodCap);
+  assert.equal(p.foodRateNow, 3 * kin.foodRateNow);
+  void k;
+});
+
+test('overlapping parts cannot launch a creature (no self-collision, speed caps)', () => {
+  const w = new World(P);
+  const p = plan('quadruped');
+  p.nodes[2].size = [0.6, 0.9, 1.4]; // big plate-like legs that overlap each other, as evolved exploiters had
+  const c = w.spawn({ body: p, brain: rhythmBrain(expandBody(p).length - 1) }, 50, 50);
+  let maxV = 0, maxLift = 0;
+  for (let i = 0; i < 400; i++) {
+    c.energy = c.stats.maxEnergy; w.step();
+    for (const h of c.ph.bodies) {
+      const b = w.physics.world.getRigidBody(h), v = b.linvel(), t = b.translation();
+      maxV = Math.max(maxV, Math.hypot(v.x, v.y, v.z));
+      maxLift = Math.max(maxLift, t.y - w.terrain.heightAt(t.x, t.z));
+    }
+  }
+  assert.ok(maxV <= 12.01, `max speed ${maxV.toFixed(1)}`);
+  assert.ok(maxLift < 3, `lifted ${maxLift.toFixed(1)} above ground`);
+  assert.ok(c.speed < 4, `creature speed ${c.speed.toFixed(1)}`);
+});

@@ -77,8 +77,10 @@ export class World {
 
   // Food settings are per 200×200 area, so density stays the same at any world size.
   get areaScale() { return (this.settings.worldSize / 200) ** 2; }
-  get foodCap() { return Math.round(this.settings.maxFood * this.areaScale); }
-  get foodRateNow() { return this.settings.foodRate * this.areaScale; }
+  // Physical bodies cover ground far slower, so their worlds hold 3× the food density.
+  get foodScale() { return this.areaScale * (this.settings.locomotion === 'physical' ? 3 : 1); }
+  get foodCap() { return Math.round(this.settings.maxFood * this.foodScale); }
+  get foodRateNow() { return this.settings.foodRate * this.foodScale; }
 
   spawn(genome, x, z, parent = null) {
     const stats = deriveStats(genome.body);
