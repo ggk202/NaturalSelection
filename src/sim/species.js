@@ -7,7 +7,7 @@ const REVERT_WINDOW = 300; // s: flipping back to a value announced this recentl
 // Keeps every 'first' and 'new-species' milestone plus the most recent other checkpoints.
 export function capCheckpoints(list, max = 200) {
   if (list.length <= max) return list;
-  const milestone = (c) => c.kind === 'first' || c.kind === 'new-species';
+  const milestone = (c) => c.kind === 'first' || c.kind === 'new-species' || c.kind === 'colonized';
   const keepOthers = max - list.filter(milestone).length;
   let others = list.filter((c) => !milestone(c)).length;
   return list.filter((c) => milestone(c) || others-- <= keepOthers);
@@ -32,7 +32,8 @@ export class SpeciesTracker {
     this.firstCarnivores = false;
   }
 
-  update(creatures, time) {
+  // biomeOf(creature) -> biome key; optional so callers without terrain still work.
+  update(creatures, time, biomeOf = null) {
     for (const s of this.species) { s.members = []; }
     for (const c of creatures) {
       let sp = this.species.find((s) => genomeDistance(s.repGenome, c.genome) < this.threshold);
@@ -60,6 +61,10 @@ export class SpeciesTracker {
       const tally = {};
       for (const c of s.members) if (c.label) tally[c.label] = (tally[c.label] || 0) + 1;
       s.dominantLabel = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0] || null;
+      const prevCounts = s.biomeCounts || {};
+      s.biomeCounts = {};
+      if (biomeOf) for (const c of s.members) { const b = biomeOf(c); s.biomeCounts[b] = (s.biomeCounts[b] || 0) + 1; }
+      s.homeBiome = Object.keys(s.biomeCounts).sort((a, b) => s.biomeCounts[b] - s.biomeCounts[a])[0] || null;
       const legs = Math.round(s.avgBody.legs);
       if (initLegs) this.seenLegs.add(legs); // founders don't count as "firsts"
 
@@ -94,6 +99,13 @@ export class SpeciesTracker {
           if (fresh(s, 'label', s.dominantLabel, time)) cp(s, 'behavior-shift', `Species ${s.id}: ${s.shownLabel} → ${s.dominantLabel}`);
         }
         if (s.dominantLabel) s.shownLabel = s.dominantLabel;
+        s.colonized ||= {};
+        for (const [b, n] of Object.entries(s.biomeCounts)) {
+          if (b !== s.homeBiome && n >= 8 && (prevCounts[b] || 0) < 2 && !s.colonized[b]) {
+            s.colonized[b] = true;
+            cp(s, 'colonized', `Species ${s.id} colonized the ${b}`);
+          }
+        }
       }
       if (s.carnivore && !this.firstCarnivores) {
         this.firstCarnivores = true;

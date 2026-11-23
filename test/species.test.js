@@ -84,3 +84,25 @@ test('capCheckpoints keeps milestones and the most recent shifts', async () => {
   assert.deepEqual(out.slice(0, 2).map((c) => c.kind), ['first', 'new-species']);
   assert.equal(out.at(-1).id, 501);
 });
+
+test('homeBiome is the majority biome', () => {
+  const t = new SpeciesTracker();
+  const cs = pop(A, 12);
+  cs.forEach((c, i) => (c.biome = i < 8 ? 'forest' : 'plains'));
+  t.update(cs, 0, (c) => c.biome);
+  assert.equal(t.species[0].homeBiome, 'forest');
+  assert.equal(t.species[0].biomeCounts.plains, 4);
+});
+
+test('colonized fires once', () => {
+  const t = new SpeciesTracker();
+  const cs = pop(A, 30);
+  cs.forEach((c) => (c.biome = 'forest'));
+  const by = (c) => c.biome;
+  t.update(cs, 0, by);
+  cs.slice(0, 10).forEach((c) => (c.biome = 'desert'));
+  const cps = t.update(cs, 5, by).filter((c) => c.kind === 'colonized');
+  assert.equal(cps.length, 1);
+  assert.match(cps[0].title, /colonized the desert/);
+  assert.equal(t.update(cs, 10, by).filter((c) => c.kind === 'colonized').length, 0);
+});

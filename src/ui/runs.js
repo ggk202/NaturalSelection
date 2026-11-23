@@ -7,7 +7,7 @@ import { fmtTime } from './charts.js';
 
 const TOAST_GAP_MS = 15000;
 let lastToast = -Infinity;
-const KIND_ICON = { 'new-species': '🌱', 'body-shift': '🦴', 'behavior-shift': '🧠', first: '⭐' };
+const KIND_ICON = { colonized: '🧭', 'new-species': '🌱', 'body-shift': '🦴', 'behavior-shift': '🧠', first: '⭐' };
 
 export function showSheet(el) {
   for (const s of document.querySelectorAll('.sheet')) if (s !== el) s.hidden = true;
@@ -104,7 +104,7 @@ export function mountRuns(root, app) {
   app.listeners.add((evs) => {
     for (const e of evs) {
       if (e.type !== 'checkpoint') continue;
-      const cp = e.checkpoint, milestone = cp.kind === 'first' || cp.kind === 'new-species';
+      const cp = e.checkpoint, milestone = cp.kind === 'first' || cp.kind === 'new-species' || cp.kind === 'colonized';
       if (!milestone && performance.now() - lastToast < TOAST_GAP_MS) continue; // timeline still has it
       lastToast = performance.now();
       toast(`${KIND_ICON[cp.kind] || ''} ${cp.title}`);

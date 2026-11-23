@@ -245,7 +245,7 @@ export class World {
     }
     if (t >= this.nextSpeciesAt) {
       this.nextSpeciesAt += SPECIES_EVERY;
-      for (const cp of this.tracker.update(this.creatures, this.time)) {
+      for (const cp of this.tracker.update(this.creatures, this.time, (c) => this.biomeOf(c).key)) {
         this.checkpoints.push(cp);
         this.emit({ type: 'checkpoint', checkpoint: cp });
       }

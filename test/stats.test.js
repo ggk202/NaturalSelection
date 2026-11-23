@@ -31,3 +31,12 @@ test('world runs tracker, stats and labels', () => {
   assert.ok(w.creatures.some((c) => c.label));
   assert.ok(Array.isArray(w.checkpoints));
 });
+
+test('sample counts creatures per biome', () => {
+  const s = new StatsRecorder();
+  const w = new World({ seed: 3 });
+  s.sample(w);
+  const b = s.series[0].biomes;
+  assert.equal(Object.values(b).reduce((a, x) => a + x, 0), w.creatures.length);
+  for (const k of ['plains', 'forest', 'wetland', 'lake', 'mountain', 'desert']) assert.equal(typeof b[k], 'number');
+});

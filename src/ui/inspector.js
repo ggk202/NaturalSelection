@@ -4,7 +4,7 @@ import { GENES } from '../sim/genome.js';
 import { think, lastHidden, INPUTS, OUTPUTS, HIDDEN } from '../sim/brain.js';
 
 const POS = '#3987e5', NEG = '#d95926';
-const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'upkeep', 'maxEnergy'];
+const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'swim', 'climb', 'camo', 'upkeep', 'maxEnergy'];
 const fmt = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
 
 export function mountInspector(root, app) {
@@ -41,7 +41,7 @@ export function mountInspector(root, app) {
     parentBtn.disabled = !app.world.find(c.parentId);
     title.textContent = `Creature #${c.id}`;
     const sp = app.world.tracker.species.find((s) => s.id === c.speciesId);
-    status.textContent = `${c.label || 'newborn'} · species ${c.speciesId ?? '–'}${sp ? ` (since ${Math.floor(sp.firstSeen)}s)` : ''} · gen ${c.generation} · age ${c.age.toFixed(0)}s · ${c.children} children`;
+    status.textContent = `${c.label || 'newborn'} in ${app.world.biomeOf(c).key} · species ${c.speciesId ?? '–'}${sp ? ` (since ${Math.floor(sp.firstSeen)}s${sp.homeBiome ? `, home: ${sp.homeBiome}` : ''})` : ''} · gen ${c.generation} · age ${c.age.toFixed(0)}s · ${c.children} children`;
     energy.firstChild.style.width = `${Math.max(0, Math.min(100, (100 * c.energy) / c.stats.maxEnergy))}%`;
     if (shownGenome !== c.genome) {
       shownGenome = c.genome;
