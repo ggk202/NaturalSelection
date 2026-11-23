@@ -14,7 +14,7 @@ const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
-  foodRate: 16, maxFood: 1200, foodEnergy: 3, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
+  foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
@@ -53,8 +53,13 @@ export class World {
       const p = this.randomLandPoint();
       this.spawn(randomGenome(this.rng), p.x, p.z);
     }
-    for (let i = 0; i < s.maxFood / 2; i++) this.spawnOneFood();
+    for (let i = 0; i < this.foodCap / 2; i++) this.spawnOneFood();
   }
+
+  // Food settings are per 200×200 area, so density stays the same at any world size.
+  get areaScale() { return (this.settings.worldSize / 200) ** 2; }
+  get foodCap() { return Math.round(this.settings.maxFood * this.areaScale); }
+  get foodRateNow() { return this.settings.foodRate * this.areaScale; }
 
   spawn(genome, x, z, parent = null) {
     const stats = deriveStats(genome.body);
@@ -71,7 +76,7 @@ export class World {
   }
 
   addFoodAt(x, z) {
-    if (this.food.length >= this.settings.maxFood) return;
+    if (this.food.length >= this.foodCap) return;
     this.food.push(this.makeFood(x, z));
   }
 
@@ -169,7 +174,7 @@ export class World {
   }
 
   spawnFood(dt) {
-    const expected = this.settings.foodRate * dt * this.env.foodMultiplier(this.time);
+    const expected = this.foodRateNow * dt * this.env.foodMultiplier(this.time);
     let n = Math.floor(expected) + (this.rng.next() < expected % 1 ? 1 : 0);
     while (n-- > 0) this.spawnOneFood();
   }
@@ -258,7 +263,8 @@ export class World {
   terrainSpeed(c) {
     const b = this.biomeOf(c), s = this.terrain.slopeAlong(c.x, c.z, c.heading);
     if (s > 0.6 && c.stats.climb < s - 0.4) return 0;
-    let m = b.id === BIOME.lake ? 0.25 + 0.75 * c.stats.swim : b.moveMul;
+    // Water slows everyone; swimming recovers most (not all) of the land speed.
+    let m = b.id === BIOME.lake || b.id === BIOME.wetland ? b.moveMul + (0.9 - b.moveMul) * c.stats.swim : b.moveMul;
     m /= 1 + Math.max(0, s) * 2;
     return m * (1 + Math.min(0.3, Math.max(0, -s)));
   }
@@ -294,6 +300,8 @@ export class World {
       if (d <= reach + 0.5 * o.genome.body.size && d < best) { best = d; target = o; }
     });
     if (!target) return;
+    // Lakes are a refuge from hunters that can't swim.
+    if (c.stats.swim < 0.5 && this.terrain.isWater(target.x, target.z)) return;
     c.actionCounters.attacked++;
     const dmg = Math.min(Math.max(target.energy, 0), c.stats.attack * this.settings.dt * 5);
     target.energy -= dmg;
@@ -310,7 +318,7 @@ export class World {
   find(id) { return this.creatures.find((c) => c.id === id) || null; }
 
   addFood(x, z, n = 10) {
-    const cap = 2 * this.settings.maxFood; // god-mode may overfill
+    const cap = 2 * this.foodCap; // god-mode may overfill
     for (let i = 0; i < n && this.food.length < cap; i++) {
       this.food.push({ id: this.nextId++, x: this.wrap(x + this.rng.range(-2, 2)), z: this.wrap(z + this.rng.range(-2, 2)), energy: this.settings.foodEnergy });
     }

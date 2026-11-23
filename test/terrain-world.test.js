@@ -113,3 +113,34 @@ test('temperature colder on mountains', () => {
   const avg = (id) => { let s = 0, n = 0; for (let k = 0; k < t.n * t.n; k++) if (t.biome[k] === id) { s += w.temperatureAt((k % t.n) * t.res, Math.floor(k / t.n) * t.res); n++; } return s / n; };
   assert.ok(avg(BIOME.mountain) < avg(BIOME.plains) - 0.2);
 });
+
+test('food scales with world area', () => {
+  const a = new World({ ...T, worldSize: 200, maxFood: 1200, foodRate: 16 });
+  const b = new World({ ...T, worldSize: 300, maxFood: 1200, foodRate: 16 });
+  assert.equal(a.foodCap, 1200);
+  assert.equal(b.foodCap, 2700);
+  assert.ok(Math.abs(b.foodRateNow / a.foodRateNow - 2.25) < 1e-9);
+});
+
+test('wetland is slow unless a good swimmer', () => {
+  const w = new World(T), p = interior(w, 'wetland');
+  const poor = w.spawn(genome({ digits: 0, legs: 2, size: 1 }), p.x, p.z), good = w.spawn(genome({ digits: 5, legs: 2, size: 1 }), p.x, p.z);
+  poor.heading = good.heading = 0;
+  assert.ok(w.terrainSpeed(good) > w.terrainSpeed(poor) * 1.3);
+});
+
+test('lake: swimming never beats land speed; poor swimmers are slowest', () => {
+  const w = new World(T), p = interior(w, 'lake');
+  const best = w.spawn(genome({ digits: 5, legs: 0, size: 2 }), p.x, p.z); best.heading = 0;
+  assert.ok(best.stats.swim === 1 && w.terrainSpeed(best) < 0.95);
+});
+
+test('creatures in a lake are safe from non-swimming hunters', () => {
+  const w = new World(T), p = interior(w, 'lake');
+  const stop = { throttle: -10 };
+  const hunter = w.spawn(genome({ diet: 1, mouth: 1.5, size: 1.5, digits: 0, legs: 4 }, { ...stop, attack: 10 }), p.x, p.z);
+  const prey = w.spawn(genome({ size: 0.5, diet: 0, digits: 5, legs: 0 }, stop), p.x + 0.3, p.z);
+  assert.ok(hunter.stats.swim < 0.5);
+  for (let i = 0; i < 40; i++) w.step();
+  assert.ok(prey.alive, 'prey should be safe');
+});

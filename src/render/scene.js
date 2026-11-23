@@ -53,7 +53,7 @@ export function createScene(canvas) {
       new THREE.MeshLambertMaterial({ color: 0x3f7fb5, transparent: true, opacity: 0.72 }));
     water.name = 'water';
     props = createProps(t, world.settings.seed);
-    food = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.35), new THREE.MeshLambertMaterial({ color: 0x3fbf4a, flatShading: true }), Math.max(1, 2 * world.settings.maxFood));
+    food = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.35), new THREE.MeshLambertMaterial({ color: 0x3fbf4a, flatShading: true }), Math.max(1, 2 * world.foodCap));
     food.frustumCulled = false;
     hazardGroup = new THREE.Group();
     hazardKey = '';

@@ -32,7 +32,7 @@ test('kill removes', () => {
 });
 
 test('addFood adds n, even above maxFood up to 2x', () => {
-  const w = new World({ ...quiet, maxFood: 10 });
+  const w = new World({ ...quiet, worldSize: 200, maxFood: 10 }); // maxFood is per 200×200 area
   w.food = [];
   w.addFood(50, 50, 15);
   assert.equal(w.food.length, 15);

@@ -18,8 +18,8 @@ const FIELDS = [
     ['mutationRate', 'Mutation rate', 0, 0.5, 0.01, true],
   ]],
   ['Food', [
-    ['foodRate', 'Food per second', 0, 20, 0.5, true],
-    ['maxFood', 'Max food', 50, 800, 10, false],
+    ['foodRate', 'Food per second (per 200×200 area)', 0, 40, 1, true],
+    ['maxFood', 'Max food (per 200×200 area)', 100, 3000, 50, false],
     ['foodEnergy', 'Energy per food', 1, 10, 0.5, true],
   ]],
   ['Environment', [
