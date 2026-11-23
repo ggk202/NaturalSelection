@@ -47,7 +47,7 @@ export function createScene(canvas) {
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     g.computeVertexNormals();
     terrain = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-    food = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.35), new THREE.MeshLambertMaterial({ color: 0x3fbf4a, flatShading: true }), Math.max(1, world.settings.maxFood));
+    food = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.35), new THREE.MeshLambertMaterial({ color: 0x3fbf4a, flatShading: true }), Math.max(1, 2 * world.settings.maxFood));
     food.frustumCulled = false;
     hazardGroup = new THREE.Group();
     hazardKey = '';
@@ -111,5 +111,15 @@ export function createScene(canvas) {
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
   }
 
-  return { renderer, scene, camera, controls, setWorld, render, pick, project };
+  // Keep the camera's offset while tracking a creature; skip wrap-around jumps.
+  const fv = new THREE.Vector3();
+  function follow(c) {
+    if (!c) return;
+    fv.set(c.x, heightAt(c.x, c.z), c.z).sub(controls.target);
+    if (fv.length() > W / 2) { camera.position.add(fv); controls.target.add(fv); return; }
+    fv.multiplyScalar(0.15);
+    camera.position.add(fv); controls.target.add(fv);
+  }
+
+  return { renderer, scene, camera, controls, setWorld, render, pick, project, follow };
 }

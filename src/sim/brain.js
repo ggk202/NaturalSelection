@@ -23,3 +23,6 @@ export function think(w, inp, out) {
   }
   return out;
 }
+
+// Hidden activations from the most recent think() call (for the inspector's brain view).
+export const lastHidden = () => Float32Array.from(hidden);

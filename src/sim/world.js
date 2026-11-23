@@ -240,6 +240,42 @@ export class World {
     this.recordElite(target);
   }
 
+  find(id) { return this.creatures.find((c) => c.id === id) || null; }
+
+  addFood(x, z, n = 10) {
+    const cap = 2 * this.settings.maxFood; // god-mode may overfill
+    for (let i = 0; i < n && this.food.length < cap; i++) {
+      this.food.push({ id: this.nextId++, x: this.wrap(x + this.rng.range(-2, 2)), z: this.wrap(z + this.rng.range(-2, 2)), energy: this.settings.foodEnergy });
+    }
+    this.emit({ type: 'god', action: 'addFood', n });
+  }
+
+  killCreature(id) {
+    const c = this.find(id);
+    if (!c) return;
+    c.alive = false;
+    this.creatures = this.creatures.filter((x) => x !== c);
+    this.emit({ type: 'death', id, cause: 'god' });
+  }
+
+  cloneCreature(id) {
+    const c = this.find(id);
+    if (!c) return null;
+    const k = this.spawn(cloneGenome(c.genome), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
+    k.generation = c.generation; k.energy = Math.min(k.stats.maxEnergy, c.energy);
+    this.emit({ type: 'god', action: 'clone', id: k.id, sourceId: id });
+    return k.id;
+  }
+
+  mutateCreature(id, rate = 0.5) {
+    const c = this.find(id);
+    if (!c) return;
+    c.genome = mutate(c.genome, rate, this.rng);
+    c.stats = deriveStats(c.genome.body);
+    c.energy = Math.min(c.energy, c.stats.maxEnergy);
+    this.emit({ type: 'god', action: 'mutate', id });
+  }
+
   seedPredators(n) {
     const W = this.settings.worldSize;
     for (let i = 0; i < n; i++) {

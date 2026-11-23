@@ -111,3 +111,45 @@ checks['charts draw'] = async ({ page, base, assert }) => {
     assert.ok(lit > 200, `${tab} lit ${lit}`);
   }
 };
+
+const screenOf = (page, id) => page.evaluate((id) => {
+  const c = window.__world.creatures.find((c) => c.id === id);
+  return window.__view.project(c.x, c.z);
+}, id);
+
+checks['tap inspects creature'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const id = await page.evaluate(() => {
+    window.__app.paused = true;
+    const w = window.__world, v = window.__view;
+    const c = w.creatures.reduce((a, b) => (Math.hypot(b.x - 50, b.z - 50) < Math.hypot(a.x - 50, a.z - 50) ? b : a));
+    v.controls.target.set(c.x, 0, c.z); v.camera.position.set(c.x, 12, c.z + 10); v.controls.update();
+    return c.id;
+  });
+  await page.waitForTimeout(200);
+  const p = await screenOf(page, id);
+  await page.mouse.click(p.x, p.y);
+  await page.waitForSelector('#inspector', { state: 'visible', timeout: 2000 });
+  assert.equal(await page.getAttribute('#inspector', 'data-id'), String(id));
+  assert.ok(await page.$('#inspector canvas.preview'));
+  assert.ok(await page.$('#inspector canvas.brain'));
+  await page.waitForTimeout(600);
+  assert.deepEqual(errors, []);
+};
+
+checks['food tool adds food'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => { window.__app.paused = true; });
+  const n0 = await page.evaluate(() => window.__world.food.length);
+  await page.click('[data-tool="food"]');
+  await page.mouse.click(512, 500);
+  assert.equal(await page.evaluate(() => window.__world.food.length), n0 + 10);
+};
+
+checks['seed predators button'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => { window.__app.paused = true; });
+  const n0 = await page.evaluate(() => window.__world.creatures.filter((c) => c.genome.body.diet >= 0.9).length);
+  await page.click('#btn-predators');
+  assert.equal(await page.evaluate(() => window.__world.creatures.filter((c) => c.genome.body.diet >= 0.9).length), n0 + 5);
+};

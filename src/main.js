@@ -5,6 +5,8 @@ import { createStepper } from './loop.js';
 import { saveRun, loadSettings } from './storage.js';
 import { mountControls } from './ui/controls.js';
 import { mountCharts } from './ui/charts.js';
+import { mountInspector } from './ui/inspector.js';
+import { mountGodMode } from './ui/godmode.js';
 
 const AUTOSAVE_MS = 60000;
 const canvas = document.getElementById('view');
@@ -35,6 +37,8 @@ const ui = document.getElementById('ui');
 app.ui = {};
 app.ui.charts = mountCharts(ui, app);
 app.ui.controls = mountControls(ui, app);
+app.ui.inspector = mountInspector(ui, app);
+app.ui.godmode = mountGodMode(ui, app, view, canvas);
 
 const stepper = createStepper();
 let last = performance.now(), lastSave = last, frameMsAvg = 16;
@@ -52,6 +56,7 @@ function frame(now) {
     const evs = w.events.splice(0);
     for (const l of app.listeners) l(evs);
   }
+  if (app.followId != null) view.follow(w.find(app.followId));
   view.render(w);
   window.__frames++;
   window.__fps = 1000 / frameMsAvg;

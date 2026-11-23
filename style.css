@@ -40,3 +40,16 @@ legend { color: var(--muted); font-size: 12px; text-transform: uppercase; letter
 .legend em { color: var(--muted); font-size: 11px; width: 100%; }
 .banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 20px 28px; text-align: center; }
 .banner strong { font-size: 22px; color: var(--danger); }
+#tools { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+#tools button { font-size: 20px; padding: 0; }
+.hint { position: absolute; left: 76px; top: 50%; transform: translateY(-50%); color: var(--fg); font-size: 12px; background: var(--bg); padding: 4px 8px; border-radius: 6px; pointer-events: none !important; }
+#inspector canvas.preview { display: block; width: 100%; height: 170px; }
+#inspector canvas.brain { display: block; width: 100%; height: 220px; background: #1a1a19; border-radius: 8px; }
+#inspector h4 { margin: 12px 0 4px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+#inspector .status { font-size: 13px; color: var(--muted); }
+.bar { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; margin: 8px 0; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kv th { text-align: left; font-weight: normal; color: var(--muted); padding: 2px 0; }
+.kv td { text-align: right; font-variant-numeric: tabular-nums; }
+button:disabled { opacity: .4; }
