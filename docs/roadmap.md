@@ -20,6 +20,12 @@ Next, in order. Each project is designed, then built, one at a time:
    Rapier (`@dimforge/rapier3d-deterministic-compat`, keeping runs deterministic), and brains drive joint motors, so
    locomotion is discovered, not designed. **Later:** a run-start choice between A (physical) and B (physical bodies, calculated
    movement). Target device: Mac M1 Max (64 GB), aiming for 150–300 physical creatures; the iPad is secondary.
+   Decisions (user, 2026-11-24):
+   - **Branching body-plan genome**, with bilateral **symmetry by default** (mutations may break it).
+   - **3a:** segments with their own shape and size, joints, limbs, grippers (dexterity), coverings (fur, shell, spikes),
+     sense organs placed on the body (eyes, mouth, antennae), and endurance as a stamina pool.
+   - **3b (later):** wings/gliding and fins/swimming.
+   - Endurance and dexterity are shown as stats in the inspector and on the Traits graph, plus a "dextrous" checkpoint.
 4. **Tool use.** World objects that dexterous creatures can handle (dexterity → tools).
 5. **Proto-language.** A framework for evolved communication, building on the signals from project 2.
    Decisions (user, 2026-11-24):

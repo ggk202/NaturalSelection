@@ -10,7 +10,7 @@ const mean = (w, key, k) => {
 };
 
 for (const seed of [1, 2]) {
-  test(`seed ${seed}: biome specialists emerge within 20 sim-minutes`, { todo: "home ranges now form (homebody ~30–40%) but body specialists have not emerged in 20 min" }, () => {
+  test(`seed ${seed}: biome specialists emerge within 20 sim-minutes`, { todo: "body specialists have not emerged in 20 min; expected to need the project 3 body system" }, () => {
     const w = new World({ seed });
     const samples = { swim: [], climb: [] };
     for (let m = 1; m <= 20; m++) {
