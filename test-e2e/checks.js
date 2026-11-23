@@ -57,8 +57,9 @@ checks['app boots'] = async ({ page, base, errors, assert }) => {
   assert.deepEqual(errors, []);
 };
 
-const boot = async (page, base) => {
-  await page.goto(`${base}/`);
+// Most checks need the sim to advance quickly, so they run kinematic bodies (physical is checked separately).
+const boot = async (page, base, query = '?locomotion=kinematic') => {
+  await page.goto(`${base}/${query}`);
   await page.waitForFunction(() => window.__world && window.__frames > 5, null, { timeout: 15000 });
 };
 
@@ -367,7 +368,7 @@ checks['signals tab and intelligence trait draw'] = async ({ page, base, assert 
 };
 
 checks['physical bodies render from body plans'] = async ({ page, base, assert, errors }) => {
-  await boot(page, base);
+  await boot(page, base, '');
   const r = await page.evaluate(() => {
     const w = window.__world, seg = window.__view.scene.getObjectByName('segments');
     const parts = w.creatures.reduce((a, c) => a + (c.parts ? c.parts.length : 0), 0);

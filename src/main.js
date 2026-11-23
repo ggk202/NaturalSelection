@@ -50,7 +50,8 @@ const runs = await listRuns();
 let bootError = null;
 if (runs.ok && runs.value.length) bootError = await app.loadRun(runs.value[0].id, runs.value[0].name);
 // New runs default to physical bodies with a population size the physics can keep up with.
-if (!app.world) app.setWorld(new World(worldSettings({ physical: true, maxCreatures: 150, ...(saved.ok && saved.value ? saved.value : {}) })));
+const forceKinematic = new URLSearchParams(location.search).get('locomotion') === 'kinematic'; // for slow devices and fast tests
+if (!app.world) app.setWorld(new World(worldSettings({ physical: true, maxCreatures: 150, ...(saved.ok && saved.value ? saved.value : {}), ...(forceKinematic ? { physical: false } : {}) })));
 
 const ui = document.getElementById('ui');
 app.ui = {};
