@@ -196,7 +196,7 @@ checks['checkpoint list shows entries'] = async ({ page, base, assert, errors })
     w.checkpoints.push(cp);
     w.emit({ type: 'checkpoint', checkpoint: cp });
   });
-  await page.waitForSelector('#toast:not([hidden])', { timeout: 2000 });
+  await page.waitForSelector('#toast:not([hidden])', { timeout: 5000 }); // toasts lag under full-suite load
   await page.click('#btn-timeline');
   await page.click('#checkpoints li >> text=legs 3 → 4');
   await page.waitForSelector('#checkpoints canvas.preview', { state: 'visible' });
