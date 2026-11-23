@@ -319,3 +319,18 @@ checks['world settings exist'] = async ({ page, base, assert }) => {
   assert.equal(await page.getAttribute('#settings input[name="worldSize"]', 'max'), '300');
   assert.ok(await page.$('#settings input[name="waterLevel"]'));
 };
+
+checks['brain graph draws the evolved network'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const id = await page.evaluate(() => { window.__app.paused = true; const c = window.__world.creatures[0]; window.__app.ui.inspector.open(c.id); return c.id; });
+  await page.waitForTimeout(600);
+  const r = await page.evaluate(() => {
+    const cv = document.querySelector('#inspector canvas.brain'), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0 && d[i] + d[i + 1] + d[i + 2] > 150) lit++;
+    return { lit, labels: window.__app.ui.inspector.brainLabels?.() || [] };
+  });
+  assert.ok(r.lit > 500, `lit ${r.lit}`);
+  assert.ok(r.labels.includes('throttle') && r.labels.includes('turn'), r.labels.join(','));
+  assert.deepEqual(errors, []);
+  void id;
+};

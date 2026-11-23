@@ -20,7 +20,7 @@ export function mountInspector(root, app) {
     h('h4', {}, 'Genes'), genes, h('h4', {}, 'Abilities'), stats);
   root.append(panel);
   const pv = createPreview(preview);
-  let id = null, parentId = null, shownGenome = null;
+  let id = null, parentId = null, shownGenome = null, lastLabels = [];
 
   function open(cid) {
     id = cid; shownGenome = null;
@@ -48,9 +48,9 @@ export function mountInspector(root, app) {
       genes.replaceChildren(...GENES.map((g) => h('tr', {}, h('th', {}, g.key), h('td', {}, fmt(c.genome.body[g.key])))));
     }
     stats.replaceChildren(...STAT_KEYS.map((k) => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c.stats[k])))));
-    drawBrainGraph(brain, c.genome.brain, c.brainState);
+    lastLabels = drawBrainGraph(brain, c.genome.brain, c.brainState);
     sync();
   }
   setInterval(update, 250);
-  return { open, close, get id() { return id; } };
+  return { open, close, get id() { return id; }, brainLabels: () => lastLabels };
 }
