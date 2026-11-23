@@ -1,0 +1,166 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { World } from '../src/sim/world.js';
+import { N_IN, RAY_CAP } from '../src/sim/neat.js';
+const anyRay = (inp, k, f = (v) => v) => { let m = 0; for (let r = 0; r < RAY_CAP; r++) { const v = f(inp[r * 3 + k]); if (v > m) m = v; } return m; };
+import { SCALARS } from '../src/sim/neat.js';
+import { BIOMES, BIOME } from '../src/sim/biomes.js';
+import { genome } from './helpers.js';
+import { deriveStats } from '../src/sim/body.js';
+
+const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false } };
+
+// Center of a cell whose 7x7 neighbourhood is entirely the given biome.
+function interior(w, key, skip = 0) {
+  const t = w.terrain, id = BIOME[key];
+  for (let j = 0; j < t.n; j++) for (let i = 0; i < t.n; i++) {
+    let ok = true;
+    for (let dj = -3; dj <= 3 && ok; dj++) for (let di = -3; di <= 3 && ok; di++) {
+      ok = t.biome[((j + dj + t.n) % t.n) * t.n + ((i + di + t.n) % t.n)] === id;
+    }
+    if (ok && skip-- <= 0) return { x: i * t.res, z: j * t.res };
+  }
+  throw new Error(`no interior ${key}`);
+}
+
+test('new inputs exist', () => {
+  for (const k of ['biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'tempGradient']) assert.ok(SCALARS.includes(k), k);
+});
+
+test('lake slows and drains non-swimmers; good swimmers cross cheaper', () => {
+  const p = interior(new World(T), 'lake');
+  const go = { throttle: 10 };
+  // measure both over the same steps
+  const w2 = new World(T);
+  const a = w2.spawn(genome({ digits: 0, legs: 2, size: 1 }, go), p.x, p.z), b = w2.spawn(genome({ digits: 5, legs: 2, size: 1 }, go), p.x, p.z + 1);
+  a.heading = b.heading = 0;
+  const ax = a.x, bx = b.x, ae = a.energy, be = b.energy;
+  for (let i = 0; i < 6; i++) w2.step();
+  assert.ok(w2.delta(ax, a.x) < w2.delta(bx, b.x), 'poor swimmer slower');
+  assert.ok(ae - a.energy > be - b.energy, 'poor swimmer drains more');
+  // and the lake is slower than plains for the same body
+  const w3 = new World(T), q = interior(w3, 'plains');
+  const c = w3.spawn(genome({ digits: 0, legs: 2, size: 1 }, go), q.x, q.z); c.heading = 0;
+  const cx = c.x;
+  for (let i = 0; i < 6; i++) w3.step();
+  assert.ok(w3.delta(cx, c.x) > w2.delta(ax, a.x), 'plains faster than lake');
+});
+
+test('steep slope blocks non-climbers', () => {
+  const w = new World(T), t = w.terrain;
+  let best = { s: 0 };
+  for (let k = 0; k < t.n * t.n; k++) {
+    const x = (k % t.n) * t.res, z = Math.floor(k / t.n) * t.res;
+    if (t.biomeAt(x, z) === BIOME.lake) continue;
+    for (let h = 0; h < 8; h++) { const s = t.slopeAlong(x, z, (h * Math.PI) / 4); if (s > best.s) best = { s, x, z, h: (h * Math.PI) / 4 }; }
+  }
+  assert.ok(best.s > 0.8, `max slope ${best.s}`);
+  const c = w.spawn(genome({ legs: 0, digits: 0 }, { throttle: 10 }), best.x, best.z);
+  c.heading = best.h;
+  const x0 = c.x, z0 = c.z;
+  for (let i = 0; i < 5; i++) w.step();
+  assert.ok(Number.isFinite(c.x) && Number.isFinite(c.energy));
+  assert.ok(Math.hypot(w.delta(x0, c.x), w.delta(z0, c.z)) < 0.05, 'should be blocked');
+});
+
+test('forest shortens sight', () => {
+  for (const [key, seen] of [['plains', true], ['forest', false]]) {
+    const w = new World(T), p = interior(w, key);
+    const c = w.spawn(genome({ eyes: 4, eyeSize: 1 }), p.x, p.z); c.heading = 0;
+    w.food.push({ id: 999, x: p.x + 0.8 * c.stats.senseRange, z: p.z, energy: 3, type: 'plant' });
+    const inp = new Float32Array(N_IN);
+    w.rebuildGrids(); w.sense(c, inp);
+    assert.equal(anyRay(inp, 0) > 0, seen, key);
+  }
+});
+
+test('camouflaged prey unseen at distance in forest', () => {
+  const w = new World(T), p = interior(w, 'forest');
+  const pred = w.spawn(genome({ diet: 1, mouth: 1.5, size: 1.5, eyes: 6, eyeSize: 1.5 }), p.x, p.z); pred.heading = 0;
+  const range = pred.stats.senseRange * BIOMES[BIOME.forest].sightMul;
+  const prey = w.spawn(genome({ size: 0.5, diet: 0 }), p.x + 5, p.z); // within forest reach (~8) unless camouflaged
+  void range;
+  const inp = new Float32Array(N_IN);
+  w.rebuildGrids(); w.sense(pred, inp);
+  assert.equal(anyRay(inp, 1), 0, 'small prey hidden');
+  prey.genome = genome({ size: 1.2, diet: 0 }); prey.stats = deriveStats(prey.genome.body);
+  w.sense(pred, inp);
+  assert.ok(anyRay(inp, 1) > 0, 'big prey visible');
+});
+
+test('food spawns more in fertile biomes, with biome food types', () => {
+  const w = new World({ ...T, maxFood: 100000, foodRate: 4000 });
+  w.food = [];
+  w.spawnFood(1);
+  const t = w.terrain, cells = new Array(6).fill(0), food = new Array(6).fill(0);
+  for (const b of t.biome) cells[b]++;
+  for (const f of w.food) {
+    const b = t.biomeAt(f.x, f.z);
+    food[b]++;
+    assert.equal(f.type, b === BIOME.forest ? 'fruit' : b === BIOME.lake ? 'water' : 'plant');
+  }
+  const dens = (b) => food[b] / cells[b];
+  assert.ok(dens(BIOME.forest) > 2 * dens(BIOME.desert), `forest ${dens(BIOME.forest)} desert ${dens(BIOME.desert)}`);
+});
+
+test('spawns avoid lakes', () => {
+  const w = new World({ seed: 1, respawnMin: 0 });
+  assert.ok(w.creatures.length > 0);
+  for (const c of w.creatures) assert.notEqual(w.terrain.biomeAt(c.x, c.z), BIOME.lake);
+});
+
+test('temperature colder on mountains', () => {
+  const w = new World(T), t = w.terrain;
+  const avg = (id) => { let s = 0, n = 0; for (let k = 0; k < t.n * t.n; k++) if (t.biome[k] === id) { s += w.temperatureAt((k % t.n) * t.res, Math.floor(k / t.n) * t.res); n++; } return s / n; };
+  assert.ok(avg(BIOME.mountain) < avg(BIOME.plains) - 0.2);
+});
+
+test('food scales with world area', () => {
+  const a = new World({ ...T, worldSize: 200, maxFood: 1200, foodRate: 16 });
+  const b = new World({ ...T, worldSize: 300, maxFood: 1200, foodRate: 16 });
+  assert.equal(a.foodCap, 1200);
+  assert.equal(b.foodCap, 2700);
+  assert.ok(Math.abs(b.foodRateNow / a.foodRateNow - 2.25) < 1e-9);
+});
+
+test('wetland is slow unless a good swimmer', () => {
+  const w = new World(T), p = interior(w, 'wetland');
+  const poor = w.spawn(genome({ digits: 0, legs: 2, size: 1 }), p.x, p.z), good = w.spawn(genome({ digits: 5, legs: 2, size: 1 }), p.x, p.z);
+  poor.heading = good.heading = 0;
+  assert.ok(w.terrainSpeed(good) > w.terrainSpeed(poor) * 1.3);
+});
+
+test('lake: swimming never beats land speed; poor swimmers are slowest', () => {
+  const w = new World(T), p = interior(w, 'lake');
+  const best = w.spawn(genome({ digits: 5, legs: 1, size: 2.5 }), p.x, p.z); // toes need a leg best.heading = 0;
+  assert.ok(best.stats.swim === 1 && w.terrainSpeed(best) < 0.95);
+});
+
+test('creatures in a lake are safe from non-swimming hunters', () => {
+  const w = new World(T), p = interior(w, 'lake');
+  const stop = { throttle: -10 };
+  const hunter = w.spawn(genome({ diet: 1, mouth: 1.5, size: 1.5, digits: 0, legs: 4 }, { ...stop, attack: 10 }), p.x, p.z);
+  const prey = w.spawn(genome({ size: 0.5, diet: 0, digits: 5, legs: 0 }, stop), p.x + 0.3, p.z);
+  assert.ok(hunter.stats.swim < 0.5);
+  for (let i = 0; i < 40; i++) w.step();
+  assert.ok(prey.alive, 'prey should be safe');
+});
+
+test('lake drain is steep for poor swimmers', () => {
+  const w = new World(T), lake = BIOMES[BIOME.lake];
+  const at = (swim) => w.biomeDrain({ stats: { swim } }, lake);
+  assert.ok(Math.abs(at(0) - 0.6) < 1e-9);
+  assert.ok(at(0.5) < 0.2 && at(1) === 0);
+});
+
+test('barrier habitats are rich', () => {
+  assert.ok(BIOMES[BIOME.lake].fertility >= 1.5 && BIOMES[BIOME.mountain].fertility >= 1.5);
+});
+
+test('mountains are slow unless a good climber', () => {
+  const w = new World(T), p = interior(w, 'mountain');
+  const poor = w.spawn(genome({ legs: 1, digits: 0 }), p.x, p.z), good = w.spawn(genome({ legs: 4, digits: 5 }), p.x, p.z);
+  assert.ok(good.stats.climb > 0.9 && poor.stats.climb < 0.1);
+  const flat = (c) => { const s = w.terrain.slopeAlong; w.terrain.slopeAlong = () => 0; const v = w.terrainSpeed(c); w.terrain.slopeAlong = s; return v; };
+  assert.ok(flat(good) > flat(poor) * 1.8, `${flat(good)} vs ${flat(poor)}`);
+});
