@@ -1,6 +1,8 @@
 import { h } from './dom.js';
 import { createPreview } from '../render/preview.js';
 import { GENES } from '../sim/genome.js';
+import { intelligence } from '../sim/neat.js';
+import { SYLLABLES } from '../sim/species.js';
 import { drawBrainGraph } from './brain-graph.js';
 
 const POS = '#3987e5', NEG = '#d95926';
@@ -12,10 +14,13 @@ export function mountInspector(root, app) {
   const title = h('strong'), status = h('div', { class: 'status' }), genes = h('table', { class: 'kv' }), stats = h('table', { class: 'kv' });
   const energy = h('div', { class: 'bar' }, h('i'));
   const followBtn = h('button', { onclick: () => { app.followId = app.followId === id ? null : id; sync(); } }, 'Follow');
+  const memBtn = h('button', { 'data-act': 'memory', onclick: () => { app.memoryId = app.memoryId === id ? null : id; sync(); } }, 'Memory');
+  const mind = h('table', { class: 'kv' });
   const parentBtn = h('button', { onclick: () => { const p = app.world.find(parentId); if (p) open(p.id); } }, 'Parent');
   const panel = h('div', { id: 'inspector', class: 'panel sheet', hidden: true },
     h('div', { class: 'sheet-head' }, title, h('button', { onclick: close }, 'Close')),
-    preview, status, energy, h('div', { class: 'row buttons' }, parentBtn, followBtn),
+    preview, status, energy, h('div', { class: 'row buttons' }, parentBtn, memBtn, followBtn),
+    h('h4', {}, 'Mind'), mind,
     h('h4', {}, 'Brain'), brain, h('div', { class: 'legend' }, h('span', {}, h('i', { style: `background:${POS}` }), 'positive'), h('span', {}, h('i', { style: `background:${NEG}` }), 'negative weight')),
     h('h4', {}, 'Genes'), genes, h('h4', {}, 'Abilities'), stats);
   root.append(panel);
@@ -29,8 +34,11 @@ export function mountInspector(root, app) {
     document.getElementById('settings')?.setAttribute('hidden', '');
     update();
   }
-  function close() { panel.hidden = true; id = null; pv.dispose(); app.followId = null; }
-  function sync() { followBtn.classList.toggle('on', app.followId != null && app.followId === id); }
+  function close() { panel.hidden = true; id = null; pv.dispose(); app.followId = null; app.memoryId = null; }
+  function sync() {
+    followBtn.classList.toggle('on', app.followId != null && app.followId === id);
+    memBtn.classList.toggle('on', app.memoryId != null && app.memoryId === id);
+  }
 
   function update() {
     if (panel.hidden || id == null) return;
@@ -47,6 +55,14 @@ export function mountInspector(root, app) {
       pv.show(c.genome);
       genes.replaceChildren(...GENES.map((g) => h('tr', {}, h('th', {}, g.key), h('td', {}, fmt(c.genome.body[g.key])))));
     }
+    const syl = (k) => (k >= 0 ? SYLLABLES[k] : '–');
+    const lex = sp && sp.lexicon ? Object.entries(sp.lexicon).map(([w, m]) => `${w} = ${m}`).join(', ') : '';
+    const b = c.genome.brain;
+    mind.replaceChildren(...[
+      ['intelligence', intelligence(b).toFixed(1)], ['learning rate', (b.lr || 0).toFixed(3)],
+      ['neurons / links', `${b.nodes.filter((n) => n.type === 'hid').length} / ${b.conns.filter((k) => k.on).length}`],
+      ['saying', syl(c.said ?? -1)], ['hearing', syl(c.heard ?? -1)], ['species words', lex || 'none yet'],
+    ].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))));
     stats.replaceChildren(...STAT_KEYS.map((k) => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c.stats[k])))));
     lastLabels = drawBrainGraph(brain, c.genome.brain, c.brainState);
     sync();

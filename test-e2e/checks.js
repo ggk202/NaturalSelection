@@ -338,3 +338,30 @@ checks['brain graph draws the evolved network'] = async ({ page, base, assert, e
   assert.deepEqual(errors, []);
   void id;
 };
+
+checks['memory overlay toggles from the inspector'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  await page.waitForFunction(() => window.__world.time > 2);
+  await page.evaluate(() => { window.__app.paused = true; window.__app.ui.inspector.open(window.__world.creatures[0].id); });
+  await page.click('#inspector [data-act="memory"]');
+  await page.waitForTimeout(800);
+  const r = await page.evaluate(() => { const m = window.__view.scene.getObjectByName('memoryOverlay'); return m ? { visible: m.visible, count: m.count } : null; });
+  assert.ok(r && r.visible && r.count > 0, JSON.stringify(r));
+  await page.click('#inspector [data-act="memory"]');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__view.scene.getObjectByName('memoryOverlay').visible), false);
+  assert.deepEqual(errors, []);
+};
+
+checks['signals tab and intelligence trait draw'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => { window.__app.speed = 8; });
+  await page.waitForFunction(() => window.__world.stats.series.length > 3, null, { timeout: 20000 });
+  await page.click('#charts [data-tab="signals"]');
+  await page.waitForTimeout(1200);
+  const legend = await page.textContent('#charts .legend');
+  for (const k of ['ka', 'ru', 'mi', 'to']) assert.ok(legend.includes(k), k);
+  await page.click('#charts [data-tab="traits"]');
+  await page.waitForTimeout(1200);
+  assert.ok((await page.textContent('#charts .legend')).includes('Intelligence'));
+};

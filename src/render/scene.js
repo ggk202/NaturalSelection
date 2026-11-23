@@ -4,6 +4,10 @@ import { createCreatureRenderer } from './creatures.js';
 import { createProps } from './props.js';
 import { BIOMES } from '../sim/biomes.js';
 import { MAX_HEIGHT } from '../sim/terrain.js';
+import { recall } from '../sim/memory.js';
+
+const SYLL_COLORS = [0x3987e5, 0xd95926, 0x199e70, 0xc98500];
+const MAX_RINGS = 300;
 
 const COLD = new THREE.Color(0xbfd8ff), HOT = new THREE.Color(0xffd3a0), NEUTRAL = new THREE.Color(0xffffff);
 const SKY = new THREE.Color(0xa9c9e8);
@@ -30,6 +34,60 @@ export function createScene(canvas) {
 
   let creatures, food, terrain, water, props, heightAt, hazardGroup, hazardKey = '', W = 0;
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+
+  // Call rings: expanding rings at callers, coloured by syllable.
+  const rings = new THREE.InstancedMesh(new THREE.RingGeometry(0.85, 1, 24).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }), MAX_RINGS);
+  rings.name = 'callRings'; rings.frustumCulled = false; rings.count = 0;
+  scene.add(rings);
+  let ringList = [], lastStep = -1, ringWorld = null;
+
+  // Mental-map overlay for one creature: danger red, food green, familiar ground faint blue.
+  const overlay = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, depthWrite: false }), 1024);
+  overlay.name = 'memoryOverlay'; overlay.frustumCulled = false; overlay.visible = false; overlay.count = 0;
+  scene.add(overlay);
+  let overlayAt = 0;
+  function showMemory(c) {
+    if (!c) { overlay.visible = false; return; }
+    overlay.visible = true;
+    const now = performance.now();
+    if (now - overlayAt < 500) return;
+    overlayAt = now;
+    const m = c.map, col = new THREE.Color();
+    let k = 0;
+    for (let j = 0; j < m.n && k < overlay.instanceMatrix.count; j++) for (let i = 0; i < m.n; i++) {
+      const x = (i + 0.5) * m.cell, z = (j + 0.5) * m.cell;
+      const d = recall(m, x, z, 'danger'), f = recall(m, x, z, 'food'), v = recall(m, x, z, 'visits');
+      const hex = d > 0.05 ? 0xe0533d : f > 0.05 ? 0x3fbf4a : v > 0.05 ? 0x6da7ec : null;
+      if (hex === null) continue;
+      overlay.setMatrixAt(k, mtx.compose(vec.set(x, heightAt(x, z) + 0.4, z), quat.identity(), scl.set(m.cell * 0.9, 1, m.cell * 0.9)));
+      overlay.setColorAt(k, col.setHex(hex));
+      k++;
+    }
+    overlay.count = k;
+    overlay.instanceMatrix.needsUpdate = true;
+    if (overlay.instanceColor) overlay.instanceColor.needsUpdate = true;
+  }
+  const mtx = new THREE.Matrix4(), vec = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
+
+  function updateRings(world) {
+    if (ringWorld !== world) { ringList = []; ringWorld = world; lastStep = -1; }
+    if (world.stepCount !== lastStep) {
+      lastStep = world.stepCount;
+      for (const k of world.calls) ringList.push({ x: k.x, z: k.z, syll: k.syll, loud: k.loud, born: world.time });
+    }
+    ringList = ringList.filter((r) => world.time - r.born < 1.2).slice(-MAX_RINGS);
+    const col = new THREE.Color();
+    ringList.forEach((r, i) => {
+      const s2 = 0.5 + (world.time - r.born) * (3 + 10 * r.loud);
+      rings.setMatrixAt(i, mtx.compose(vec.set(r.x, heightAt(r.x, r.z) + 0.25, r.z), quat.identity(), scl.set(s2, 1, s2)));
+      rings.setColorAt(i, col.setHex(SYLL_COLORS[r.syll]));
+    });
+    rings.count = ringList.length;
+    rings.instanceMatrix.needsUpdate = true;
+    if (rings.instanceColor) rings.instanceColor.needsUpdate = true;
+  }
 
   function setWorld(world) {
     for (const o of [terrain, water, props, food, hazardGroup]) if (o) { scene.remove(o); o.traverse((x) => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
@@ -72,6 +130,7 @@ export function createScene(canvas) {
       camera.updateProjectionMatrix();
     }
     creatures.update(world.creatures, world.time);
+    updateRings(world);
     food.count = Math.min(world.food.length, food.instanceMatrix.count);
     for (let i = 0; i < food.count; i++) {
       const f = world.food[i];
@@ -127,5 +186,5 @@ export function createScene(canvas) {
     camera.position.add(fv); controls.target.add(fv);
   }
 
-  return { renderer, scene, camera, controls, setWorld, render, pick, project, follow };
+  return { renderer, scene, camera, controls, setWorld, render, pick, project, follow, showMemory };
 }

@@ -71,10 +71,13 @@ export const TABS = {
   ] },
   traits: { label: 'Traits', note: 'scaled to each gene’s range', keys: [
     TRAIT('legs', 'Legs', 8, SERIES[0]), TRAIT('eyes', 'Eyes', 6, SERIES[1]), TRAIT('size', 'Size', 2, SERIES[2]),
-    TRAIT('diet', 'Diet', 1, SERIES[3]), TRAIT('insulation', 'Insulation', 1, SERIES[4]),
+    TRAIT('diet', 'Diet', 1, SERIES[3]), TRAIT('insulation', 'Insulation', 1, SERIES[4]), TRAIT('intelligence', 'Intelligence', 20, SERIES[5]),
   ] },
   biomes: { label: 'Biomes', keys: ['plains', 'forest', 'wetland', 'lake', 'mountain', 'desert'].map((b, i) => ({
     get: (p) => (p.biomes ? p.biomes[b] : 0), label: b[0].toUpperCase() + b.slice(1), color: SERIES[i],
+  })) },
+  signals: { label: 'Signals', note: 'calls per minute', keys: ['ka', 'ru', 'mi', 'to'].map((name, i) => ({
+    get: (p) => (p.calls ? p.calls[i] : 0), label: name, color: SERIES[i],
   })) },
   behavior: { label: 'Behaviour', keys: ['wanderer', 'forager', 'hunter', 'ambusher', 'homebody', 'patroller'].map((l, i) => ({
     get: (p) => p.labels[l] || 0, label: l[0].toUpperCase() + l.slice(1), color: SERIES[i],

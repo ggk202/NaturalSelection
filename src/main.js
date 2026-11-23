@@ -76,6 +76,7 @@ function frame(now) {
     for (const l of app.listeners) l(evs);
   }
   if (app.followId != null) view.follow(w.find(app.followId));
+  view.showMemory(app.memoryId != null ? w.find(app.memoryId) : null);
   view.render(w);
   window.__frames++;
   window.__fps = 1000 / frameMsAvg;

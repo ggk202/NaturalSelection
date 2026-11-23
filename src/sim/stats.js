@@ -1,5 +1,6 @@
 import { LABELS } from './behavior.js';
 import { BIOMES } from './biomes.js';
+import { intelligence } from './neat.js';
 
 const AVG_KEYS = ['size', 'legs', 'digits', 'eyes', 'antennae', 'mouth', 'diet', 'insulation'];
 const MAX_POINTS = 2000;
@@ -17,12 +18,17 @@ export class StatsRecorder {
     const avg = {};
     for (const k of AVG_KEYS) avg[k] = cs.reduce((a, c) => a + c.genome.body[k], 0) / n;
     avg.speed = cs.reduce((a, c) => a + c.stats.speed, 0) / n;
+    avg.intelligence = cs.reduce((a, c) => a + intelligence(c.genome.brain), 0) / n;
+    // Calls per minute per syllable since the previous sample.
+    const prevT = this.series.length ? this.series.at(-1).t : 0, span = Math.max(1e-6, world.time - prevT);
+    const calls = world.callCounts ? world.callCounts.map((k) => (k * 60) / span) : [0, 0, 0, 0];
+    if (world.callCounts) world.callCounts.fill(0);
     const labels = Object.fromEntries(LABELS.map((l) => [l, 0]));
     for (const c of cs) if (c.label) labels[c.label]++;
     const biomes = Object.fromEntries(BIOMES.map((b) => [b.key, 0]));
     if (world.terrain) for (const c of cs) biomes[BIOMES[world.terrain.biomeAt(c.x, c.z)].key]++;
     const carn = cs.filter((c) => c.genome.body.diet > 0.5).length;
-    this.series.push({ t: world.time, pop: cs.length, herb: cs.length - carn, carn, food: world.food.length, avg, labels, biomes, species: world.tracker ? world.tracker.species.length : 0 });
+    this.series.push({ t: world.time, pop: cs.length, herb: cs.length - carn, carn, food: world.food.length, avg, labels, biomes, calls, species: world.tracker ? world.tracker.species.length : 0 });
     // Halve resolution when full so the series stays bounded and evenly spaced.
     if (this.series.length > MAX_POINTS) {
       this.series = this.series.filter((_, i) => i % 2 === 0);
