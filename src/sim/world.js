@@ -176,7 +176,10 @@ export class World {
       out[S[`mapDanger${side}`]] = recall(m, x, z, 'danger');
     }
     out[S.familiarity] = recall(m, c.x, c.z, 'visits');
-    out[S.kinNear] = c.nearestSeen ? relatedness(c.genome, c.nearestSeen.genome) : 0;
+    // Relatedness only changes when the creature looks at someone else (or genomes change): cache it.
+    const o = c.nearestSeen;
+    if (o && (!c.kinCache || c.kinCache.a !== c.genome || c.kinCache.b !== o.genome)) c.kinCache = { a: c.genome, b: o.genome, v: relatedness(c.genome, o.genome) };
+    out[S.kinNear] = o ? c.kinCache.v : 0;
     this.hear(c, out);
     senseBody(this, c, out, S);
     return out;

@@ -29,9 +29,14 @@ export function castRays(world, c, rays, out, offset) {
   const half = n === 1 ? st.fov / 2 : spacing / 2;
   const blocked = st.swim < 0.5, slot = slotsFor(n);
 
+  // The terrain march (forest cover, obstacles) is the costly part; it is refreshed on alternate steps and
+  // cached on the creature (and saved with it, so loaded worlds continue identically).
+  const reuse = c.march && c.march.n === n && ((world.stepCount + c.id) & 1) === 1;
+  if (!reuse) c.march = { n, reach: new Array(n), obstacle: new Array(n) };
   for (let k = 0; k < n; k++) {
     const a = n === 1 ? 0 : full ? (k - (n - 1) / 2) * spacing : -st.fov / 2 + k * spacing;
     angles[k] = a;
+    if (reuse) { reach[k] = Math.min(c.march.reach[k], range); out[offset + slot[k] * 3 + 2] = c.march.obstacle[k]; continue; }
     const h = c.heading + a, hx = Math.cos(h), hz = Math.sin(h);
     let vis = 1, obstacle = 0, hPrev = t.heightAt(c.x, c.z);
     reach[k] = range;
@@ -47,6 +52,7 @@ export function castRays(world, c, rays, out, offset) {
     // Standing in water counts as an obstacle at distance 0 for non-swimmers.
     if (blocked && t.biomeAt(c.x, c.z) === BIOME.lake) obstacle = 1;
     out[offset + slot[k] * 3 + 2] = obstacle;
+    c.march.reach[k] = reach[k]; c.march.obstacle[k] = obstacle;
   }
 
   const bucket = (dx, dz) => {

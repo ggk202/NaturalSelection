@@ -19,7 +19,7 @@ export function serializeWorld(w) {
     schemaVersion: SCHEMA_VERSION,
     settings: w.settings, time: w.time, rng: w.rng.state(), nextId: w.nextId,
     nextLabelAt: w.nextLabelAt, nextSpeciesAt: w.nextSpeciesAt,
-    creatures: w.creatures.map(({ stats, threatNear, nearestSeen, genome, lastOutputs, brainState, brainPre, brainUpkeep, map, weights, parts, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), brainPre: Array.from(brainPre), map: encodeMap(map), weights: toB64(weights) })),
+    creatures: w.creatures.map(({ stats, threatNear, nearestSeen, kinCache, genome, lastOutputs, brainState, brainPre, brainUpkeep, map, weights, parts, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), brainPre: Array.from(brainPre), map: encodeMap(map), weights: toB64(weights) })),
     nextFadeAt: w.nextFadeAt,
     physics: w.physics ? toB64(w.physics.snapshot()) : null, // Rapier world state (bodies, joints, velocities)
     calls: w.calls.map((k) => ({ ...k, genome: g2j(k.genome) })), callCounts: [...w.callCounts], stepCount: w.stepCount,
