@@ -17,7 +17,7 @@ export function serializeWorld(w) {
     nextLabelAt: w.nextLabelAt, nextSpeciesAt: w.nextSpeciesAt,
     creatures: w.creatures.map(({ stats, threatNear, nearestSeen, genome, lastOutputs, brainState, brainPre, brainUpkeep, map, weights, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), brainPre: Array.from(brainPre), map: encodeMap(map), weights: toB64(weights) })),
     nextFadeAt: w.nextFadeAt,
-    calls: w.calls.map((k) => ({ ...k, genome: g2j(k.genome) })), callCounts: [...w.callCounts],
+    calls: w.calls.map((k) => ({ ...k, genome: g2j(k.genome) })), callCounts: [...w.callCounts], stepCount: w.stepCount,
     nextNodeId: w.nextNodeId,
     food: w.food.map((f) => ({ ...f })),
     hazards: w.env.hazards.map((h) => ({ ...h })),
@@ -26,7 +26,7 @@ export function serializeWorld(w) {
     carnivoresSeen: w.carnivoresSeen,
     tracker: {
       threshold: t.threshold, nextId: t.nextId, nextCheckpointId: t.nextCheckpointId,
-      seenLegs: t.seenLegs ? [...t.seenLegs] : null, firstCarnivores: t.firstCarnivores, firstAmbush: !!t.firstAmbush,
+      seenLegs: t.seenLegs ? [...t.seenLegs] : null, firstCarnivores: t.firstCarnivores, firstAmbush: !!t.firstAmbush, firstMeaning: { ...t.firstMeaning },
       species: t.species.map(({ members, repGenome, ...s }) => ({ ...s, repGenome: g2j(repGenome) })),
     },
     stats: { interval: w.stats.interval, series: w.stats.series },
@@ -39,7 +39,7 @@ export function deserializeWorld(o) {
   const w = new World({ ...o.settings, initialCreatures: 0 });
   w.settings = o.settings;
   w.time = o.time; w.nextId = o.nextId; w.nextNodeId = o.nextNodeId;
-  w.calls = o.calls.map((k) => ({ ...k, genome: j2g(k.genome) })); w.callCounts = [...o.callCounts];
+  w.calls = o.calls.map((k) => ({ ...k, genome: j2g(k.genome) })); w.callCounts = [...o.callCounts]; w.stepCount = o.stepCount;
   w.nextLabelAt = o.nextLabelAt; w.nextFadeAt = o.nextFadeAt; w.nextSpeciesAt = o.nextSpeciesAt;
   w.creatures = o.creatures.map((c) => {
     const genome = j2g(c.genome);
@@ -53,7 +53,7 @@ export function deserializeWorld(o) {
   w.eliteCarn = o.eliteCarn.map((e) => ({ children: e.children, genome: j2g(e.genome) }));
   w.carnivoresSeen = o.carnivoresSeen;
   const t = w.tracker, ot = o.tracker;
-  Object.assign(t, { threshold: ot.threshold, nextId: ot.nextId, nextCheckpointId: ot.nextCheckpointId, firstCarnivores: ot.firstCarnivores, firstAmbush: ot.firstAmbush });
+  Object.assign(t, { threshold: ot.threshold, nextId: ot.nextId, nextCheckpointId: ot.nextCheckpointId, firstCarnivores: ot.firstCarnivores, firstAmbush: ot.firstAmbush, firstMeaning: { ...ot.firstMeaning } });
   t.seenLegs = ot.seenLegs ? new Set(ot.seenLegs) : null;
   t.species = ot.species.map((s) => ({ ...s, repGenome: j2g(s.repGenome), members: [] }));
   w.stats.interval = o.stats.interval;

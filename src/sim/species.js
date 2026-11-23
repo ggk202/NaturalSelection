@@ -1,5 +1,10 @@
 import { GENES, genomeDistance, cloneGenome } from './genome.js';
 
+export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
+const MEANINGS = [['threat', 'alarm'], ['food', 'food'], ['kin', 'kin']];
+const add = (o, ctx) => { o.n++; if (ctx.threat) o.threat++; if (ctx.food) o.food++; if (ctx.kin) o.kin++; };
+const halve = (o) => { for (const k of Object.keys(o)) o[k] = Math.floor(o[k] / 2); };
+
 const INT_GENES = GENES.filter((g) => g.int).map((g) => g.key);
 const MIN_ANNOUNCE = 10;
 const REVERT_WINDOW = 300; // s: flipping back to a value announced this recently is noise, not a milestone
@@ -30,9 +35,42 @@ export class SpeciesTracker {
     this.nextCheckpointId = 1;
     this.seenLegs = null; // global "first N-legged lineage"
     this.firstCarnivores = false;
+    this.firstMeaning = {};
   }
 
   // biomeOf(creature) -> biome key; optional so callers without terrain still work.
+  // Signal statistics per species: contexts at each call vs. contexts in general (base rates).
+  sigOf(c) {
+    const s = c.speciesId != null && this.species.find((x) => x.id === c.speciesId);
+    if (!s) return null;
+    return (s.sig ||= { calls: SYLLABLES.map(() => ({ n: 0, threat: 0, food: 0, kin: 0 })), base: { n: 0, threat: 0, food: 0, kin: 0 } });
+  }
+  noteContext(c, ctx) { const g = this.sigOf(c); if (g) add(g.base, ctx); }
+  noteCall(c, syll, ctx) { const g = this.sigOf(c); if (g) add(g.calls[syll], ctx); }
+
+  // A syllable means a context when it reliably accompanies it (≥60%) well above chance (≥2× base rate).
+  meanings(s, time, cp) {
+    const g = s.sig;
+    if (!g || !g.base.n) return;
+    s.lexicon ||= {};
+    s.meant ||= {};
+    SYLLABLES.forEach((name, k) => {
+      const c = g.calls[k];
+      if (c.n < 50) return;
+      for (const [ctx, label] of MEANINGS) {
+        const p = c[ctx] / c.n, base = g.base[ctx] / g.base.n;
+        if (p < 0.6 || p < 2 * base) continue;
+        s.lexicon[name] = label;
+        if (s.meant[`${name}:${ctx}`]) continue;
+        s.meant[`${name}:${ctx}`] = true;
+        cp(s, 'first', `Species ${s.id} evolved ${label === 'alarm' ? 'an alarm' : `a ${label}`} call ("${name}")`);
+        if (!this.firstMeaning[ctx]) { this.firstMeaning[ctx] = true; cp(s, 'first', `First ${label} call`); }
+      }
+    });
+    // Keep the statistics recent: halve once a species has called a lot.
+    if (g.calls.reduce((a, c) => a + c.n, 0) > 2000) { for (const c of g.calls) halve(c); halve(g.base); }
+  }
+
   // Ambush milestones: once globally, once per species.
   noteAmbush(c, time) {
     const out = [], s = this.species.find((x) => x.id === c.speciesId);
@@ -116,6 +154,7 @@ export class SpeciesTracker {
           }
         }
       }
+      if (s.announced) this.meanings(s, time, cp);
       if (s.carnivore && !this.firstCarnivores) {
         this.firstCarnivores = true;
         if (!initLegs) cp(s, 'first', 'First carnivores evolved');

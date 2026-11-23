@@ -7,13 +7,13 @@ import { castRays } from './vision.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
 import { labelOf, emptyCounters } from './behavior.js';
-import { SpeciesTracker, capCheckpoints } from './species.js';
+import { SpeciesTracker, capCheckpoints, SYLLABLES } from './species.js';
+export { SYLLABLES };
 import { StatsRecorder } from './stats.js';
 import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
-export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
 const CALL_COST = 0.05; // energy/s at full loudness (≈ base upkeep; 0.3 starved founders)
 const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
@@ -51,6 +51,7 @@ export class World {
     this.calls = []; // heard this step (emitted last step)
     this.newCalls = [];
     this.callCounts = [0, 0, 0, 0]; // per syllable since the last stats sample
+    this.stepCount = 0;
     this.nextSpeciesAt = 0;
     this.nextId = 1;
     this.nextNodeId = 1000; // hidden neuron ids (shared by descendants)
@@ -267,6 +268,7 @@ export class World {
       if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
       if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
+      if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c)); // base rates, sampled
       if (o[4] > 0.5) this.call(c, (o[4] - 0.5) * 2, (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
       else c.said = -1;
       if (o[3] > 0.5) this.reproduce(c);
@@ -281,6 +283,7 @@ export class World {
     }
     this.creatures = this.creatures.filter((c) => c.alive);
     this.food = this.food.filter((f) => !f.eaten);
+    this.stepCount++;
     this.calls = this.newCalls; // heard next step: keeps updates order-independent
     this.newCalls = [];
     this.respawn();
@@ -317,7 +320,7 @@ export class World {
     this.newCalls.push({ x: c.x, z: c.z, syll, loud, id: c.id, genome: c.genome });
     this.callCounts[syll]++;
     c.said = syll;
-    this.tracker.noteCall?.(c, syll, this.callContext(c));
+    this.tracker.noteCall(c, syll, this.callContext(c));
   }
 
   // What was going on when a creature called: threat seen, food seen, kin nearby.
