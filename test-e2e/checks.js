@@ -403,3 +403,21 @@ checks['fast-forward runs in a worker and hands the world back'] = async ({ page
   assert.match(r.toast, /sim-minutes/);
   assert.deepEqual(errors, []);
 };
+
+checks['fast-forward works with physical bodies, and Stop ends it promptly'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base, ''); // the app default: physical bodies
+  const t0 = await page.evaluate(() => window.__world.time);
+  await page.click('#btn-ff');
+  await page.fill('#ff input[name="simMinutes"]', '0.1');
+  await page.click('#ff button.primary');
+  await page.waitForSelector('#ff-progress', { state: 'hidden', timeout: 90000 });
+  assert.ok(await page.evaluate((t) => window.__world.time >= t + 5.9, t0));
+  await page.click('#btn-ff');
+  await page.fill('#ff input[name="simMinutes"]', '30');
+  await page.click('#ff button.primary');
+  await page.waitForFunction(() => /alive/.test(document.querySelector('#ff-progress').textContent), null, { timeout: 30000 });
+  await page.click('#ff-progress button');
+  await page.waitForSelector('#ff-progress', { state: 'hidden', timeout: 5000 });
+  assert.equal(await page.evaluate(() => window.__app.paused), false);
+  assert.deepEqual(errors, []);
+};

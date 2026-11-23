@@ -5,6 +5,10 @@ import { runUntil } from './sim/fastforward.js';
 let stopped = false;
 self.onmessage = async ({ data }) => {
   if (data.type === 'stop') { stopped = true; return; }
+  try { await run(data); } catch (e) { self.postMessage({ type: 'error', message: String(e && e.message || e) }); } // async errors don't reach worker.onerror
+};
+
+async function run(data) {
   const world = deserializeWorld(data.save), cond = { realMinutes: 10, ...data.cond };
   const startReal = performance.now(), startTime = world.time, log = [];
   let result = null, lastPost = 0;
@@ -19,4 +23,4 @@ self.onmessage = async ({ data }) => {
     await new Promise((r) => setTimeout(r, 0)); // let a Stop message in
   }
   self.postMessage({ type: 'done', reason: result ? result.reason : 'stopped', detail: result ? result.detail : 'stopped by you', save: serializeWorld(world) });
-};
+}

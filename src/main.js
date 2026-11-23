@@ -32,21 +32,32 @@ export const app = {
   },
   // Fast-forward in a worker: the view pauses, the world comes back where the run stopped.
   fastForward(cond, { progress, done }) {
-    if (app.ff) return;
-    const { runId, runName } = app, worker = new Worker(new URL('./ff-worker.js', import.meta.url), { type: 'module' });
-    app.paused = true;
-    app.ff = worker;
-    const finish = (msg) => { worker.terminate(); app.ff = null; app.paused = false; done(); app.ui.runs.toast(msg); };
-    worker.onmessage = ({ data }) => {
-      if (data.type === 'progress') return progress(data);
-      app.setWorld(deserializeWorld(data.save), runId, runName);
-      finish(`⏩ Stopped: ${data.detail}`);
-      app.save();
-    };
-    worker.onerror = (e) => finish(`Fast-forward failed (${e.message || 'error'}); the world is unchanged.`);
-    worker.postMessage({ save: serializeWorld(app.world), cond });
+    if (app.ff) app.ff.terminate(); // a stale run must never block a new one
+    const { runId, runName } = app;
+    let worker = null;
+    const finish = (msg) => { worker?.terminate(); if (app.ff === worker) app.ff = null; app.paused = false; done(); app.ui.runs.toast(msg); };
+    try {
+      worker = new Worker(new URL('./ff-worker.js', import.meta.url), { type: 'module' });
+      app.paused = true;
+      app.ff = worker;
+      worker.onmessage = ({ data }) => {
+        if (data.type === 'progress') return progress(data);
+        if (data.type === 'error') return finish(`Fast-forward failed (${data.message}); the world is unchanged.`);
+        app.setWorld(deserializeWorld(data.save), runId, runName);
+        finish(`⏩ Stopped: ${data.detail}`);
+        app.save();
+      };
+      worker.onerror = (e) => finish(`Fast-forward failed (${e.message || 'worker could not start'}); the world is unchanged.`);
+      worker.postMessage({ save: serializeWorld(app.world), cond });
+    } catch (e) { finish(`Fast-forward failed (${e.message}); the world is unchanged.`); }
   },
-  stopFastForward() { app.ff?.postMessage({ type: 'stop' }); },
+  // Stop asks the worker to hand the world back; if it doesn't answer quickly, abandon the run (world unchanged).
+  stopFastForward() {
+    const w = app.ff;
+    if (!w) return;
+    w.postMessage({ type: 'stop' });
+    setTimeout(() => { if (app.ff === w) { w.onmessage({ data: { type: 'error', message: 'worker did not respond' } }); } }, 2000);
+  },
   // Returns an error message, or null on success. A failed load leaves the save untouched.
   async loadRun(id, name) {
     const r = await loadRun(id);
