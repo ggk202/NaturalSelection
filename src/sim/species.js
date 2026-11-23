@@ -1,4 +1,4 @@
-import { GENES, genomeDistance, cloneGenome } from './genome.js';
+import { GENES, genomeDistance, cloneGenome, traitsOf } from './genome.js';
 
 export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
 const MEANINGS = [['threat', 'alarm'], ['food', 'food'], ['kin', 'kin']];
@@ -7,7 +7,7 @@ const halve = (o) => { for (const k of ['n', 'threat', 'food', 'kin']) o[k] = Ma
 const blank = () => ({ n: 0, threat: 0, food: 0, kin: 0 });
 const CALL_GAP = 40, CALLER_MEMORY = 200, MIN_CALLERS = 5; // steps; distinct callers needed for a word
 
-const INT_GENES = GENES.filter((g) => g.int).map((g) => g.key);
+const INT_GENES = GENES.filter((g) => g.int && g.key !== 'parts').map((g) => g.key); // part count is redundant with the specific shifts
 const MIN_ANNOUNCE = 10;
 const REVERT_WINDOW = 300; // s: flipping back to a value announced this recently is noise, not a milestone
 
@@ -95,7 +95,7 @@ export class SpeciesTracker {
   // Ambush milestones: once globally, once per species.
   noteAmbush(c, time) {
     const out = [], s = this.species.find((x) => x.id === c.speciesId);
-    const make = (title) => out.push({ id: this.nextCheckpointId++, time, speciesId: c.speciesId, kind: 'first', title, genome: cloneGenome(c.genome), avgBody: { ...(s ? s.avgBody : c.genome.body) } });
+    const make = (title) => out.push({ id: this.nextCheckpointId++, time, speciesId: c.speciesId, kind: 'first', title, genome: cloneGenome(c.genome), avgBody: { ...(s ? s.avgBody : traitsOf(c.genome)) } });
     if (!this.firstAmbush) { this.firstAmbush = true; make('First ambush'); }
     if (s && !s.ambushed) { s.ambushed = true; make(`Species ${s.id}: first ambush`); }
     return out;
@@ -125,7 +125,7 @@ export class SpeciesTracker {
     for (const s of this.species) {
       s.count = s.members.length;
       s.avgBody = {};
-      for (const { key } of GENES) s.avgBody[key] = s.members.reduce((a, c) => a + c.genome.body[key], 0) / s.count;
+      for (const { key } of GENES) s.avgBody[key] = s.members.reduce((a, c) => a + traitsOf(c.genome)[key], 0) / s.count;
       const tally = {};
       for (const c of s.members) if (c.label) tally[c.label] = (tally[c.label] || 0) + 1;
       s.dominantLabel = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0] || null;

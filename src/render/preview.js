@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { placeParts } from './parts.js';
 import { creatureColor } from './creatures.js';
+import { traitsOf } from '../sim/genome.js';
 
 const GEOMS = {
   body: new THREE.IcosahedronGeometry(1, 0), leg: new THREE.CylinderGeometry(1, 0.7, 1, 5),
@@ -60,8 +61,8 @@ export function createPreview(canvas) {
   }
   return {
     show(genome) {
-      const s = genome.body.size, { camera } = getShared();
-      group = buildCreature(genome.body);
+      const t = traitsOf(genome), s = t.size, { camera } = getShared();
+      group = buildCreature(t);
       camera.position.set(2.6 * s + 0.8, 1.6 * s + 0.6, 2.6 * s + 0.8);
       camera.lookAt(0, 0.6 * s, 0);
       if (!raf) loop();

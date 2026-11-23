@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { placeParts, MAX_PARTS } from './parts.js';
+import { traitsOf } from '../sim/genome.js';
 
 const GEOMS = {
   body: () => new THREE.IcosahedronGeometry(1, 0),
@@ -19,7 +20,7 @@ const localCache = new WeakMap();
 function localParts(genome) {
   let p = localCache.get(genome);
   if (!p) {
-    p = placeParts(genome.body).map((part) => ({
+    p = placeParts(traitsOf(genome)).map((part) => ({
       type: part.type,
       matrix: new THREE.Matrix4().compose(v.fromArray(part.position), q.setFromEuler(e.set(...part.rotation)), sc.fromArray(part.scale)),
     }));
@@ -51,9 +52,9 @@ export function createCreatureRenderer(scene, maxCreatures, heightAt) {
     bodyIds.length = 0;
     for (const c of creatures) {
       const moving = c.lastOutputs[1] > 0.3;
-      const bob = moving ? Math.abs(Math.sin(time * 12 + c.id)) * 0.08 * c.genome.body.size : 0;
+      const bob = moving ? Math.abs(Math.sin(time * 12 + c.id)) * 0.08 * traitsOf(c.genome).size : 0;
       world.compose(v.set(c.x, heightAt(c.x, c.z) + bob, c.z), q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -c.heading), sc.set(1, 1, 1));
-      creatureColor(c.genome.body, color);
+      creatureColor(traitsOf(c.genome), color);
       limbColor.copy(color).multiplyScalar(0.7);
       for (const part of localParts(c.genome)) {
         const mesh = meshes[part.type], i = counts[part.type]++;

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng } from '../src/sim/rng.js';
-import { GENES, randomGenome, mutate, cloneGenome, genomeDistance } from '../src/sim/genome.js';
+import { GENES, randomGenome, mutate, cloneGenome, genomeDistance, traitsOf } from '../src/sim/genome.js';
 
 
 test('random genome in range', () => {
@@ -9,7 +9,7 @@ test('random genome in range', () => {
   for (let i = 0; i < 200; i++) {
     const g = randomGenome(r);
     for (const { key, min, max, int } of GENES) {
-      const v = g.body[key];
+      const v = traitsOf(g)[key];
       assert.ok(v >= min && v <= max, `${key}=${v}`);
       if (int) assert.ok(Number.isInteger(v), key);
     }
@@ -41,7 +41,7 @@ test('founder brains only wire inputs the creature has, with 4–8 links', async
   const { RAY_CAP, N_IN } = await import('../src/sim/neat.js');
   const r = createRng(11);
   for (let i = 0; i < 200; i++) {
-    const g = randomGenome(r), rays = Math.min(RAY_CAP, 1 + 2 * g.body.eyes);
+    const g = randomGenome(r), rays = Math.min(RAY_CAP, 1 + 2 * traitsOf(g).eyes);
     assert.ok(g.brain.conns.length >= 4 && g.brain.conns.length <= 8);
     for (const c of g.brain.conns) assert.ok(c.from >= RAY_CAP * 3 || Math.floor(c.from / 3) < rays, `link from ray slot ${Math.floor(c.from / 3)} with ${rays} rays`);
     assert.ok(N_IN > RAY_CAP * 3);

@@ -68,11 +68,24 @@ export const TEMPLATES = {
   }),
 };
 
-export const cloneBodyPlan = (p) => ({ nodes: p.nodes.map((n) => ({ ...n, size: [...n.size], edges: n.edges.map((e) => ({ ...e })) })) });
+export const cloneBodyPlan = (p) => ({ ...p, nodes: p.nodes.map((n) => ({ ...n, size: [...n.size], edges: n.edges.map((e) => ({ ...e })) })) });
 
 export function randomBodyPlan(rng) {
   const names = Object.keys(TEMPLATES), p = TEMPLATES[names[rng.int(0, names.length - 1)]]();
-  for (const n of p.nodes) n.size = n.size.map((s) => s * rng.range(0.8, 1.25));
+  for (const n of p.nodes) {
+    n.size = n.size.map((s) => s * rng.range(0.8, 1.25));
+    if (n.eyes) { n.eyes = rng.int(1, 4); n.eyeSize = rng.range(0.4, 1.2); n.mouth = rng.range(0.6, 1.2); n.antennae = rng.int(0, 2); }
+  }
+  // Limbs (elongated, organ-free nodes) get 0–3 toes: feet for walking, grip for climbing, webbing for swimming.
+  const limbs = p.nodes.filter((n) => !n.eyes && !n.mouth && n.size[0] >= 2 * Math.max(n.size[1], n.size[2]));
+  if (limbs.length) {
+    const toes = rng.int(0, 3);
+    if (toes) {
+      p.nodes.push(node({ size: [0.22, 0.08, 0.08] }));
+      const t = p.nodes.length - 1;
+      for (const l of limbs) for (let d = 0; d < toes; d++) l.edges.push(edge({ to: t, face: 0, yaw: toes === 1 ? 0 : -0.6 + (1.2 * d) / (toes - 1), axis: 'y', lo: -0.4, hi: 0.4, strength: 0.5 }));
+    }
+  }
   return p;
 }
 
@@ -167,7 +180,10 @@ export function mutateBodyPlan(plan, rate, rng) {
 }
 
 // ---------- summaries (for species, charts, distance) ----------
+const summaries = new WeakMap();
 export function summarizeBody(plan, maxParts = 24) {
+  const hit = maxParts === 24 && summaries.get(plan);
+  if (hit) return hit;
   const parts = expandBody(plan, maxParts);
   const s = { parts: parts.length, limbs: 0, grippers: 0, fur: 0, shell: 0, spikes: 0, eyes: 0, mouth: 0, antennae: 0, mass: 0, length: 0 };
   let minX = Infinity, maxX = -Infinity;
@@ -180,6 +196,7 @@ export function summarizeBody(plan, maxParts = 24) {
     minX = Math.min(minX, p.pos[0] - p.size[0] / 2); maxX = Math.max(maxX, p.pos[0] + p.size[0] / 2);
   }
   s.length = maxX - minX;
+  if (maxParts === 24) summaries.set(plan, s);
   return s;
 }
 

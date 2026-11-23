@@ -5,7 +5,9 @@ import { genome } from './helpers.js';
 
 const A = { size: 0.5, legs: 3, eyes: 0, mouth: 0.2, diet: 0 };
 const B = { size: 2, legs: 8, eyes: 6, mouth: 1.5, diet: 1, insulation: 0 };
-const pop = (body, n, label = 'wanderer') => Array.from({ length: n }, () => ({ genome: genome(body), label }));
+// Replace bodies (plans are immutable): set(cs, {legs: 4}) rebuilds each genome with the changed parameters.
+const set = (cs, change) => { for (const c of cs) c.genome = genome({ ...c.params, ...change }), Object.assign(c.params, change); };
+const pop = (body, n, label = 'wanderer') => Array.from({ length: n }, () => ({ genome: genome(body), params: { ...body }, label }));
 
 test('clustering splits distinct genomes', () => {
   const t = new SpeciesTracker();
@@ -28,7 +30,7 @@ test('body-shift checkpoint fires once', () => {
   const t = new SpeciesTracker();
   const cs = pop(A, 12);
   t.update(cs, 0);
-  for (const c of cs) c.genome.body.legs = 4;
+  set(cs, { legs: 4 });
   const cps = t.update(cs, 5).filter((c) => c.kind === 'body-shift');
   assert.equal(cps.length, 1);
   assert.match(cps[0].title, /legs 3 → 4/);
@@ -39,7 +41,7 @@ test('first carnivores fires', () => {
   const t = new SpeciesTracker();
   const cs = pop(A, 12);
   t.update(cs, 0);
-  for (const c of cs) c.genome.body.diet = 0.8;
+  set(cs, { diet: 0.8 });
   const cps = t.update(cs, 5);
   assert.ok(cps.some((c) => c.kind === 'first' && /carnivore/i.test(c.title)));
   assert.ok(cps.some((c) => c.kind === 'body-shift' && /carnivor/i.test(c.title)));
@@ -65,13 +67,13 @@ test('a shift that reverts a recent shift is suppressed', () => {
   const t = new SpeciesTracker();
   const cs = pop(A, 12);
   t.update(cs, 0);
-  for (const c of cs) c.genome.body.legs = 4;
+  set(cs, { legs: 4 });
   assert.equal(t.update(cs, 5).filter((c) => c.kind === 'body-shift').length, 1);
-  for (const c of cs) c.genome.body.legs = 3;
+  set(cs, { legs: 3 });
   assert.equal(t.update(cs, 60).length, 0);
-  for (const c of cs) c.genome.body.legs = 4;
+  set(cs, { legs: 4 });
   assert.equal(t.update(cs, 90).length, 0);
-  for (const c of cs) c.genome.body.legs = 3;
+  set(cs, { legs: 3 });
   assert.equal(t.update(cs, 400).length, 1); // long after: a real reversal
 });
 

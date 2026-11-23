@@ -59,7 +59,7 @@ test('forest hides at distance but not up close', () => {
 
 test('water is an obstacle for non-swimmers only', () => {
   const w = new World(T), p = interior(w, 'lake');
-  const poor = w.spawn(genome({ eyes: 1, digits: 0, legs: 4 }), p.x, p.z), good = w.spawn(genome({ eyes: 1, digits: 5, legs: 0, size: 2 }), p.x, p.z);
+  const poor = w.spawn(genome({ eyes: 1, digits: 0, legs: 4 }), p.x, p.z), good = w.spawn(genome({ eyes: 1, digits: 5, legs: 1, size: 2.5 }), p.x, p.z); // toes need a leg
   poor.heading = good.heading = 0;
   w.rebuildGrids();
   const a = buf(), b = buf();

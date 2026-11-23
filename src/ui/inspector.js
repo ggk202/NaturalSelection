@@ -1,6 +1,6 @@
 import { h } from './dom.js';
 import { createPreview } from '../render/preview.js';
-import { GENES, relatedness } from '../sim/genome.js';
+import { GENES, relatedness, traitsOf } from '../sim/genome.js';
 import { intelligence } from '../sim/neat.js';
 import { SYLLABLES } from '../sim/species.js';
 import { drawBrainGraph } from './brain-graph.js';
@@ -53,7 +53,7 @@ export function mountInspector(root, app) {
     if (shownGenome !== c.genome) {
       shownGenome = c.genome;
       pv.show(c.genome);
-      genes.replaceChildren(...GENES.map((g) => h('tr', {}, h('th', {}, g.key), h('td', {}, fmt(c.genome.body[g.key])))));
+      genes.replaceChildren(...GENES.map((g) => h('tr', {}, h('th', {}, g.key), h('td', {}, fmt(traitsOf(c.genome)[g.key])))));
     }
     const syl = (k) => (k >= 0 ? SYLLABLES[k] : '–');
     const lex = sp && sp.lexicon ? Object.entries(sp.lexicon).map(([w, m]) => `${w} = ${[].concat(m).join('/')}`).join(', ') : '';

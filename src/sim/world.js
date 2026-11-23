@@ -1,5 +1,5 @@
 import { createRng } from './rng.js';
-import { randomGenome, mutate, cloneGenome, relatedness } from './genome.js';
+import { randomGenome, mutate, cloneGenome, relatedness, traitsOf } from './genome.js';
 import { deriveStats } from './body.js';
 import { runBrain, newState, brainCost, initWeights, learn, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
 import { createMap, inheritMap, remember, recall, fade } from './memory.js';
@@ -87,7 +87,7 @@ export class World {
       map: parent ? inheritMap(parent.map) : createMap(this.settings.worldSize, this.settings.mapCell),
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
-    if (genome.body.diet > 0.5) this.carnivoresSeen = true;
+    if (traitsOf(genome).diet > 0.5) this.carnivoresSeen = true;
     this.creatures.push(c);
     return c;
   }
@@ -140,7 +140,7 @@ export class World {
   delta(a, b) { const W = this.settings.worldSize; let d = b - a; if (d > W / 2) d -= W; else if (d < -W / 2) d += W; return d; }
 
   // Number of vision rays: from eyes, capped by the maxRays setting.
-  raysOf(c) { return Math.max(1, Math.min(this.settings.maxRays, RAY_CAP, 1 + 2 * c.genome.body.eyes)); }
+  raysOf(c) { return Math.max(1, Math.min(this.settings.maxRays, RAY_CAP, 1 + 2 * traitsOf(c.genome).eyes)); }
 
   // Fills the brain input vector: ray channels, then scalars (see neat.js INPUT_NAMES).
   sense(c, out) {
@@ -178,7 +178,7 @@ export class World {
   hear(c, out) {
     for (let k = 0; k < 4; k++) out[S[`hear${k}`]] = 0;
     out[S.hearSin] = 0; out[S.hearCos] = 0; out[S.hearKin] = 0;
-    const ears = 1 + 0.25 * c.genome.body.antennae;
+    const ears = 1 + 0.25 * traitsOf(c.genome).antennae;
     let loudest = null, best = 0;
     for (const k of this.calls) {
       if (k.id === c.id) continue;
@@ -207,7 +207,7 @@ export class World {
 
   eat(c) {
     if (c.stats.digestPlant <= 0.1) return;
-    const r = 0.5 * c.genome.body.size + 0.3;
+    const r = 0.5 * traitsOf(c.genome).size + 0.3;
     let hit = null;
     this.foodGrid.query(c.x, c.z, r, (f) => {
       if (hit || f.eaten) return;
@@ -224,7 +224,7 @@ export class World {
   reproduce(c) {
     const s = this.settings;
     if (this.creatures.length >= s.maxCreatures) return;
-    if (c.energy <= c.genome.body.reproThreshold * c.stats.maxEnergy) return;
+    if (c.energy <= traitsOf(c.genome).reproThreshold * c.stats.maxEnergy) return;
     const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng, this.nodeIds), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
     c.normalCost += c.energy / 2; // giving birth is not a punishment
     c.energy /= 2;
@@ -260,7 +260,7 @@ export class World {
       if (c.winX === undefined) { c.winX = c.x; c.winZ = c.z; }
       ac.path += Math.abs(v) * dt;
       ac.maxDist = Math.max(ac.maxDist, Math.hypot(this.delta(c.winX, c.x), this.delta(c.winZ, c.z)));
-      c.normalCost = (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size) * dt;
+      c.normalCost = (st.upkeep + c.brainUpkeep + 0.01 * v * traitsOf(c.genome).size) * dt;
       c.energy -= c.normalCost + this.envCost(c, inp) * dt;
       c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
@@ -279,7 +279,7 @@ export class World {
       c.age += dt;
     }
     for (const c of this.creatures) {
-      if (c.alive && (c.energy <= 0 || c.age > 60 * c.genome.body.size)) {
+      if (c.alive && (c.energy <= 0 || c.age > 60 * traitsOf(c.genome).size)) {
         c.alive = false;
         this.recordElite(c);
         this.emit({ type: 'death', id: c.id, cause: c.energy <= 0 ? 'starved' : 'old age' });
@@ -369,12 +369,12 @@ export class World {
 
   attack(c) {
     c.energy -= 0.02 * this.settings.dt;
-    const reach = 0.6 * c.genome.body.size;
+    const reach = 0.6 * traitsOf(c.genome).size;
     let target = null, best = Infinity;
     this.creatureGrid.query(c.x, c.z, reach + 1, (o) => {
       if (o === c || !o.alive) return;
       const dx = this.delta(c.x, o.x), dz = this.delta(c.z, o.z), d = Math.hypot(dx, dz);
-      if (d <= reach + 0.5 * o.genome.body.size && d < best) { best = d; target = o; }
+      if (d <= reach + 0.5 * traitsOf(o.genome).size && d < best) { best = d; target = o; }
     });
     if (!target) return;
     // Lakes are a refuge from hunters that can't swim.
@@ -450,7 +450,7 @@ export class World {
   }
 
   recordElite(c) {
-    if (c.genome.body.diet > 0.5 && c.kills + c.children > 0) {
+    if (traitsOf(c.genome).diet > 0.5 && c.kills + c.children > 0) {
       this.eliteCarn.push({ genome: c.genome, children: c.kills * 2 + c.children });
       this.eliteCarn.sort((a, b) => b.children - a.children);
       if (this.eliteCarn.length > 10) this.eliteCarn.length = 10;
@@ -465,12 +465,12 @@ export class World {
     const s = this.settings, W = s.worldSize;
     if (this.carnivoresSeen && s.predatorMin > 0) {
       let carn = 0;
-      for (const c of this.creatures) if (c.genome.body.diet > 0.5) carn++;
+      for (const c of this.creatures) if (traitsOf(c.genome).diet > 0.5) carn++;
       for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
         const g = this.eliteCarn.length
           ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
           : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng));
-        g.body.diet = Math.max(g.body.diet, 0.55);
+        g.body.diet = Math.max(g.body.diet ?? 0, 0.55);
         const p = this.randomLandPoint();
         this.spawn(g, p.x, p.z);
       }
@@ -487,7 +487,9 @@ export class World {
 
 function predatorGenome(src) {
   const g = cloneGenome(src);
-  g.body.diet = 0.9; g.body.mouth = Math.max(g.body.mouth, 1.2);
+  g.body.diet = 0.9;
+  const mouths = g.body.nodes.filter((n) => n.mouth > 0);
+  for (const n of mouths.length ? mouths : [g.body.nodes[0]]) n.mouth = Math.max(n.mouth, 1.2);
   return g;
 }
 

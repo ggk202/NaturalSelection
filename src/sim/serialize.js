@@ -2,11 +2,12 @@ import { World } from './world.js';
 import { Environment } from './environment.js';
 import { deriveStats } from './body.js';
 import { cloneBrain, brainCost } from './neat.js';
+import { cloneBodyPlan } from './bodyplan.js';
 import { encodeMap, decodeMap, toB64, fromB64 } from './memory.js';
 
-export const SCHEMA_VERSION = 5; // 5: voice, hearing, kin
+export const SCHEMA_VERSION = 6; // 6: body plans
 
-const g2j = (g) => ({ body: { ...g.body }, brain: cloneBrain(g.brain) });
+const g2j = (g) => ({ body: cloneBodyPlan(g.body), brain: cloneBrain(g.brain) });
 const j2g = g2j;
 
 export function serializeWorld(w) {

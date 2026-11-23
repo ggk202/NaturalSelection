@@ -132,7 +132,7 @@ test('wetland is slow unless a good swimmer', () => {
 
 test('lake: swimming never beats land speed; poor swimmers are slowest', () => {
   const w = new World(T), p = interior(w, 'lake');
-  const best = w.spawn(genome({ digits: 5, legs: 0, size: 2 }), p.x, p.z); best.heading = 0;
+  const best = w.spawn(genome({ digits: 5, legs: 1, size: 2.5 }), p.x, p.z); // toes need a leg best.heading = 0;
   assert.ok(best.stats.swim === 1 && w.terrainSpeed(best) < 0.95);
 });
 
