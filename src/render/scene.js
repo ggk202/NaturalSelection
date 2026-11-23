@@ -1,7 +1,9 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { OrbitControls } from '../../vendor/OrbitControls.js';
 import { createCreatureRenderer } from './creatures.js';
-import { makeHeightAt } from './terrain.js';
+import { createProps } from './props.js';
+import { BIOMES } from '../sim/biomes.js';
+import { MAX_HEIGHT } from '../sim/terrain.js';
 
 const COLD = new THREE.Color(0xbfd8ff), HOT = new THREE.Color(0xffd3a0), NEUTRAL = new THREE.Color(0xffffff);
 const SKY = new THREE.Color(0xa9c9e8);
@@ -12,13 +14,13 @@ export function createScene(canvas) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene();
   scene.background = SKY.clone();
-  scene.fog = new THREE.Fog(SKY.clone(), 120, 260);
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 600);
+  scene.fog = new THREE.Fog(SKY.clone(), 220, 520);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 900);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.47;
   controls.minDistance = 5;
-  controls.maxDistance = 220;
+  controls.maxDistance = 400;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x556644, 1.6);
@@ -26,34 +28,38 @@ export function createScene(canvas) {
   sun.position.set(40, 80, 20);
   scene.add(hemi, sun);
 
-  let creatures, food, terrain, heightAt, hazardGroup, hazardKey = '', W = 0;
+  let creatures, food, terrain, water, props, heightAt, hazardGroup, hazardKey = '', W = 0;
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
 
   function setWorld(world) {
-    if (terrain) { scene.remove(terrain, food, hazardGroup); terrain.geometry.dispose(); }
+    for (const o of [terrain, water, props, food, hazardGroup]) if (o) { scene.remove(o); o.traverse((x) => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
+    const t = world.terrain;
     W = world.settings.worldSize;
-    heightAt = makeHeightAt(W);
-    const g = new THREE.PlaneGeometry(W, W, 64, 64).rotateX(-Math.PI / 2).translate(W / 2, 0, W / 2);
-    const pos = g.attributes.position, cols = [];
-    const north = new THREE.Color(0xdfe9ee), mid = new THREE.Color(0x7fae5a), south = new THREE.Color(0xd9c27a), c = new THREE.Color();
+    // Objects float on water; terrain itself dips below it.
+    heightAt = (x, z) => Math.max(t.heightAt(x, z), t.waterHeight - 0.3);
+    const segs = Math.min(t.n, 128);
+    const g = new THREE.PlaneGeometry(W, W, segs, segs).rotateX(-Math.PI / 2).translate(W / 2, 0, W / 2);
+    const pos = g.attributes.position, cols = [], c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i);
-      pos.setY(i, heightAt(x, z) - 0.05);
-      const t = z / W; // north (z=0) is cold
-      if (world.settings.env.temperature) c.copy(t < 0.5 ? north : mid).lerp(t < 0.5 ? mid : south, t < 0.5 ? t * 2 : (t - 0.5) * 2);
-      else c.copy(mid);
+      const x = pos.getX(i), z = pos.getZ(i), h = t.heightAt(x, z);
+      pos.setY(i, h);
+      c.setHex(BIOMES[t.biomeAt(x, z)].color).multiplyScalar(0.8 + 0.35 * Math.min(1, h / (MAX_HEIGHT * 1.4)));
       cols.push(c.r, c.g, c.b);
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     g.computeVertexNormals();
     terrain = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    water = new THREE.Mesh(new THREE.PlaneGeometry(W, W).rotateX(-Math.PI / 2).translate(W / 2, t.waterHeight, W / 2),
+      new THREE.MeshLambertMaterial({ color: 0x3f7fb5, transparent: true, opacity: 0.72 }));
+    water.name = 'water';
+    props = createProps(t, world.settings.seed);
     food = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.35), new THREE.MeshLambertMaterial({ color: 0x3fbf4a, flatShading: true }), Math.max(1, 2 * world.settings.maxFood));
     food.frustumCulled = false;
     hazardGroup = new THREE.Group();
     hazardKey = '';
-    scene.add(terrain, food, hazardGroup);
+    scene.add(terrain, water, props, food, hazardGroup);
     if (!creatures) creatures = createCreatureRenderer(scene, MAX_RENDERED, (x, z) => heightAt(x, z));
-    camera.position.set(W / 2, 70, W / 2 + 80);
+    camera.position.set(W / 2, W * 0.45, W / 2 + W * 0.55);
     controls.target.set(W / 2, 0, W / 2);
   }
 
@@ -78,8 +84,8 @@ export function createScene(canvas) {
       hazardKey = key;
       for (const c of [...hazardGroup.children]) { hazardGroup.remove(c); c.geometry.dispose(); }
       for (const hz of world.env.hazards) {
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(hz.r, hz.r, 3.4, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xd02a1a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }));
-        disc.position.set(hz.x, 0, hz.z);
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(hz.r, hz.r, 6, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xd02a1a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }));
+        disc.position.set(hz.x, heightAt(hz.x, hz.z), hz.z);
         disc.userData.hazardId = hz.id;
         hazardGroup.add(disc);
       }

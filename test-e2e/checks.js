@@ -288,3 +288,15 @@ checks['switching runs or reseeding saves the current run first'] = async ({ pag
   const metaA = await page.evaluate(async (a) => (await (await import('/src/storage.js')).listRuns()).value.find((r) => r.id === a), a);
   assert.ok(metaA.time >= tA - 0.5, `A saved at ${metaA.time}, was ${tA}`);
 };
+
+checks['world renders biomes'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const r = await page.evaluate(() => {
+    const s = window.__view.scene;
+    return { water: !!s.getObjectByName('water'), trees: s.getObjectByName('trees')?.count || 0, rocks: s.getObjectByName('rocks')?.count || 0 };
+  });
+  assert.ok(r.water, 'water plane');
+  assert.ok(r.trees > 100, `trees ${r.trees}`);
+  assert.ok(r.rocks > 10, `rocks ${r.rocks}`);
+  assert.deepEqual(errors, []);
+};
