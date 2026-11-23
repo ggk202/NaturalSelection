@@ -67,16 +67,20 @@ export function mutateBrain(b, rate, rng, nextId, probs = null) {
   return m;
 }
 
+// Enabled connections keyed by from*65536+to, cached per brain (brains are immutable once built).
+const connMaps = new WeakMap();
+function connMap(b) {
+  let m = connMaps.get(b);
+  if (!m) { m = new Map(); for (const c of b.conns) if (c.on) m.set(c.from * 65536 + c.to, c.w); connMaps.set(b, m); }
+  return m;
+}
+
 export function brainDistance(a, b) {
-  const map = new Map(b.conns.filter((c) => c.on).map((c) => [`${c.from}>${c.to}`, c.w]));
-  let match = 0, wd = 0, disjoint = 0;
-  const ca = a.conns.filter((c) => c.on);
-  for (const c of ca) {
-    const k = `${c.from}>${c.to}`;
-    if (map.has(k)) { match++; wd += Math.abs(map.get(k) - c.w); map.delete(k); } else disjoint++;
-  }
-  disjoint += map.size;
-  const n = Math.max(1, ca.length, ca.length + map.size - match);
+  const ma = connMap(a), mb = connMap(b);
+  let match = 0, wd = 0;
+  for (const [k, w] of ma) { const o = mb.get(k); if (o !== undefined) { match++; wd += Math.abs(o - w); } }
+  const disjoint = ma.size + mb.size - 2 * match;
+  const n = Math.max(1, ma.size, mb.size);
   return disjoint / n + 0.4 * (match ? wd / match : 0);
 }
 

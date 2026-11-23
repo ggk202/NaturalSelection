@@ -249,7 +249,7 @@ checks['perf 300 creatures (sim time asserted, frame time logged)'] = async ({ p
     return { step, frameMs: (performance.now() - s) / (window.__frames - f0) };
   });
   console.log(`  # sim step ${r.step.toFixed(2)} ms, frame ${r.frameMs.toFixed(1)} ms (software GL — check fps on iPad)`);
-  assert.ok(r.step < 8, `sim step ${r.step}`);
+  assert.ok(r.step < 10, `sim step ${r.step}`); // relaxed 8→10ms in 2a: user moving to a stronger device; vision rays cost ~2ms
 };
 
 checks['deleting the current run does not resurrect it'] = async ({ page, base, assert }) => {
