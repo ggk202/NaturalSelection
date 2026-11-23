@@ -38,3 +38,13 @@ test('creature parts: every body part produces geometry', async () => {
   assert.equal(count('mouth'), 1);
   for (const p of parts) for (const k of ['position', 'rotation', 'scale']) assert.equal(p[k].length, 3);
 });
+
+test('runSteps stops at the time budget', async () => {
+  const { runSteps } = await import('../src/loop.js');
+  let t = 0, steps = 0;
+  const world = { step: () => { steps++; t += 5; } };
+  assert.equal(runSteps(world, 64, 12, () => t), 3);
+  assert.equal(steps, 3);
+  steps = 0;
+  assert.equal(runSteps(world, 2, 12, () => t), 2);
+});

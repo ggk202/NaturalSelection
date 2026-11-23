@@ -86,7 +86,8 @@ export function mountControls(root, app) {
       if (input.type === 'checkbox') input.checked = v; else { input.value = v; out.textContent = String(v); }
     }
   }
-  function reseed() {
+  async function reseed() {
+    await app.save(); // keep the run being replaced
     app.setWorld(new World(structuredClone(draft)));
     app.paused = false;
     sync();

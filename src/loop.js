@@ -10,3 +10,16 @@ export function createStepper() {
     return n;
   };
 }
+
+// Runs up to n steps but stops once budgetMs has elapsed, so heavy worlds at high speed
+// slow the sim down instead of collapsing the frame rate. Returns steps actually run.
+export function runSteps(world, n, budgetMs, now = () => performance.now()) {
+  const start = now();
+  let i = 0;
+  while (i < n) {
+    world.step();
+    i++;
+    if (now() - start >= budgetMs) break;
+  }
+  return i;
+}

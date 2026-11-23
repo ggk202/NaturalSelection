@@ -2,6 +2,25 @@ import { GENES, genomeDistance, cloneGenome } from './genome.js';
 
 const INT_GENES = GENES.filter((g) => g.int).map((g) => g.key);
 const MIN_ANNOUNCE = 10;
+const REVERT_WINDOW = 300; // s: flipping back to a value announced this recently is noise, not a milestone
+
+// Keeps every 'first' and 'new-species' milestone plus the most recent other checkpoints.
+export function capCheckpoints(list, max = 200) {
+  if (list.length <= max) return list;
+  const milestone = (c) => c.kind === 'first' || c.kind === 'new-species';
+  const keepOthers = max - list.filter(milestone).length;
+  let others = list.filter((c) => !milestone(c)).length;
+  return list.filter((c) => milestone(c) || others-- <= keepOthers);
+}
+
+// Records an announced value; returns false if it just reverts to a recently announced value.
+function fresh(s, key, value, time) {
+  const recent = (s.recent[key] ||= []).filter((r) => time - r.time < REVERT_WINDOW);
+  const isFresh = !recent.some((r) => r.value === value);
+  if (isFresh) recent.push({ value, time });
+  s.recent[key] = recent;
+  return isFresh;
+}
 
 export class SpeciesTracker {
   constructor({ threshold = 0.25 } = {}) {
@@ -50,6 +69,10 @@ export class SpeciesTracker {
         s.shown = Object.fromEntries(INT_GENES.map((k) => [k, Math.round(s.avgBody[k])]));
         s.carnivore = s.avgBody.diet > 0.5;
         s.shownLabel = s.dominantLabel;
+        s.recent = {};
+        for (const k of INT_GENES) fresh(s, k, s.shown[k], time);
+        fresh(s, 'diet', s.carnivore, time);
+        if (s.shownLabel) fresh(s, 'label', s.shownLabel, time);
         if (initLegs) continue;
         cp(s, 'new-species', `Species ${s.id} emerged (${s.count} members, ${legs} legs)`);
       } else {
@@ -58,17 +81,17 @@ export class SpeciesTracker {
           const avg = s.avgBody[k], prev = s.shown[k];
           if (Math.abs(avg - prev) >= 0.75) {
             const now = Math.round(avg);
-            cp(s, 'body-shift', `Species ${s.id}: ${k} ${prev} → ${now}`);
+            if (fresh(s, k, now, time)) cp(s, 'body-shift', `Species ${s.id}: ${k} ${prev} → ${now}`);
             s.shown[k] = now;
           }
         }
         const carn = s.carnivore ? s.avgBody.diet > 0.4 : s.avgBody.diet > 0.6;
         if (carn !== s.carnivore) {
           s.carnivore = carn;
-          cp(s, 'body-shift', `Species ${s.id} became ${carn ? 'carnivorous' : 'herbivorous'}`);
+          if (fresh(s, 'diet', carn, time)) cp(s, 'body-shift', `Species ${s.id} became ${carn ? 'carnivorous' : 'herbivorous'}`);
         }
         if (s.dominantLabel && s.shownLabel && s.dominantLabel !== s.shownLabel) {
-          cp(s, 'behavior-shift', `Species ${s.id}: ${s.shownLabel} → ${s.dominantLabel}`);
+          if (fresh(s, 'label', s.dominantLabel, time)) cp(s, 'behavior-shift', `Species ${s.id}: ${s.shownLabel} → ${s.dominantLabel}`);
         }
         if (s.dominantLabel) s.shownLabel = s.dominantLabel;
       }

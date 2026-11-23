@@ -249,3 +249,42 @@ checks['perf 300 creatures (sim time asserted, frame time logged)'] = async ({ p
   console.log(`  # sim step ${r.step.toFixed(2)} ms, frame ${r.frameMs.toFixed(1)} ms (software GL — check fps on iPad)`);
   assert.ok(r.step < 8, `sim step ${r.step}`);
 };
+
+checks['deleting the current run does not resurrect it'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  page.on('dialog', (d) => d.accept());
+  await page.click('#btn-runs');
+  await page.click('#btn-save-now');
+  const id = await page.evaluate(() => window.__app.runId);
+  await page.waitForSelector(`#runs li[data-id="${id}"]`);
+  await page.click(`#runs li[data-id="${id}"] [data-act="delete"]`);
+  await page.waitForTimeout(500);
+  const ids = await page.evaluate(async () => (await (await import('/src/storage.js')).listRuns()).value.map((r) => r.id));
+  assert.ok(!ids.includes(id), `still saved: ${ids}`);
+  assert.notEqual(await page.evaluate(() => window.__app.runId), id);
+};
+
+checks['switching runs or reseeding saves the current run first'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.click('#btn-runs');
+  await page.click('#btn-save-now');
+  const a = await page.evaluate(() => window.__app.runId);
+  await page.click('#btn-new-run');
+  await page.evaluate(() => { window.__app.speed = 8; });
+  await page.waitForFunction(() => window.__world.time > 4);
+  const b = await page.evaluate(() => window.__app.runId);
+  await page.evaluate(() => window.__app.ui.runs.openRuns());
+  await page.evaluate(() => window.__app.ui.runs.openRuns());
+  await page.click(`#runs li[data-id="${a}"] [data-act="resume"]`);
+  await page.waitForFunction((a) => window.__app.runId === a, a);
+  const metaB = await page.evaluate(async (b) => (await (await import('/src/storage.js')).listRuns()).value.find((r) => r.id === b), b);
+  assert.ok(metaB && metaB.time > 4, `B saved at ${metaB && metaB.time}`);
+  // Reseed from settings also saves the run being replaced.
+  await page.evaluate(() => { window.__app.speed = 8; });
+  const tA = await page.evaluate(async () => { await new Promise((r) => setTimeout(r, 1500)); return window.__world.time; });
+  await page.click('#btn-settings');
+  await page.click('#settings button.primary');
+  await page.waitForFunction((a) => window.__app.runId !== a, a);
+  const metaA = await page.evaluate(async (a) => (await (await import('/src/storage.js')).listRuns()).value.find((r) => r.id === a), a);
+  assert.ok(metaA.time >= tA - 0.5, `A saved at ${metaA.time}, was ${tA}`);
+};

@@ -1,7 +1,7 @@
 import { World } from './sim/world.js';
 import { serializeWorld, deserializeWorld } from './sim/serialize.js';
 import { createScene } from './render/scene.js';
-import { createStepper } from './loop.js';
+import { createStepper, runSteps } from './loop.js';
 import { saveRun, loadSettings, listRuns, loadRun } from './storage.js';
 import { mountRuns } from './ui/runs.js';
 import { mountControls } from './ui/controls.js';
@@ -10,6 +10,7 @@ import { mountInspector } from './ui/inspector.js';
 import { mountGodMode } from './ui/godmode.js';
 
 const AUTOSAVE_MS = 60000;
+const STEP_BUDGET_MS = 12; // leaves room for rendering within a 30fps frame
 const canvas = document.getElementById('view');
 const view = createScene(canvas);
 
@@ -33,7 +34,9 @@ export const app = {
     if (!r.ok) return r.error;
     if (!r.value) return 'run not found';
     try {
-      app.setWorld(deserializeWorld(r.value), id, name);
+      const world = deserializeWorld(r.value);
+      if (app.world && id !== app.runId) await app.save(); // don't lose the run being replaced
+      app.setWorld(world, id, name);
       return null;
     } catch (e) { return e.message; }
   },
@@ -66,8 +69,7 @@ function frame(now) {
   last = now;
   const w = app.world;
   if (!app.paused) {
-    const n = stepper(dt, app.speed, w.settings.dt);
-    for (let i = 0; i < n; i++) w.step();
+    app.lastSteps = runSteps(w, stepper(dt, app.speed, w.settings.dt), STEP_BUDGET_MS);
   }
   if (w.events.length) {
     const evs = w.events.splice(0);

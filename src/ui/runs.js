@@ -5,6 +5,8 @@ import { listRuns, deleteRun, renameRun } from '../storage.js';
 import { createPreview } from '../render/preview.js';
 import { fmtTime } from './charts.js';
 
+const TOAST_GAP_MS = 15000;
+let lastToast = -Infinity;
 const KIND_ICON = { 'new-species': '🌱', 'body-shift': '🦴', 'behavior-shift': '🧠', first: '⭐' };
 
 export function showSheet(el) {
@@ -18,7 +20,7 @@ export function mountRuns(root, app) {
   const runs = h('div', { id: 'runs', class: 'panel sheet', hidden: true },
     h('div', { class: 'sheet-head' }, h('strong', {}, 'Runs'), h('button', { onclick: () => (runs.hidden = true) }, 'Close')),
     h('div', { class: 'row buttons' },
-      h('button', { id: 'btn-new-run', onclick: newRun }, 'New run'),
+      h('button', { id: 'btn-new-run', onclick: () => newRun() }, 'New run'),
       h('button', { id: 'btn-save-now', class: 'primary', onclick: async () => { await app.save(); refresh(); } }, 'Save now'),
       h('button', { onclick: download }, 'Download JSON')),
     list);
@@ -40,7 +42,7 @@ export function mountRuns(root, app) {
         h('button', { 'data-act': 'delete', onclick: async () => {
           if (!confirm(`Delete "${m.name}"? This cannot be undone.`)) return;
           await deleteRun(m.id);
-          if (m.id === app.runId) newRun();
+          if (m.id === app.runId) await newRun({ save: false }); // saving would resurrect the deleted run
           refresh();
         } }, 'Delete')))));
   }
@@ -50,8 +52,8 @@ export function mountRuns(root, app) {
     if (err) toast(`Could not load run: ${err}`);
     refresh();
   }
-  async function newRun() {
-    await app.save();
+  async function newRun({ save = true } = {}) {
+    if (save) await app.save();
     app.setWorld(new World(structuredClone(app.ui.controls.draft)));
     refresh();
   }
@@ -100,7 +102,13 @@ export function mountRuns(root, app) {
   app.onStorageError = () => { warning.hidden = false; };
 
   app.listeners.add((evs) => {
-    for (const e of evs) if (e.type === 'checkpoint') toast(`${KIND_ICON[e.checkpoint.kind] || ''} ${e.checkpoint.title}`);
+    for (const e of evs) {
+      if (e.type !== 'checkpoint') continue;
+      const cp = e.checkpoint, milestone = cp.kind === 'first' || cp.kind === 'new-species';
+      if (!milestone && performance.now() - lastToast < TOAST_GAP_MS) continue; // timeline still has it
+      lastToast = performance.now();
+      toast(`${KIND_ICON[cp.kind] || ''} ${cp.title}`);
+    }
     if (!timeline.hidden) renderTimeline();
   });
 

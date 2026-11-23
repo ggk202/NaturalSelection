@@ -5,7 +5,7 @@ import { think, INPUTS, OUTPUTS } from './brain.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
 import { labelOf, emptyCounters } from './behavior.js';
-import { SpeciesTracker } from './species.js';
+import { SpeciesTracker, capCheckpoints } from './species.js';
 import { StatsRecorder } from './stats.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
@@ -196,6 +196,7 @@ export class World {
         this.checkpoints.push(cp);
         this.emit({ type: 'checkpoint', checkpoint: cp });
       }
+      this.checkpoints = capCheckpoints(this.checkpoints);
     }
     if (this.stats.due(this.time)) this.stats.sample(this);
   }
@@ -231,7 +232,9 @@ export class World {
     });
     if (!target) return;
     c.actionCounters.attacked++;
-    target.energy -= c.stats.attack * this.settings.dt * 5;
+    const dmg = Math.min(Math.max(target.energy, 0), c.stats.attack * this.settings.dt * 5);
+    target.energy -= dmg;
+    c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.8 * dmg * c.stats.digestMeat); // feeding while biting
     if (target.energy > 0) return;
     target.alive = false;
     c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.6 * target.stats.maxEnergy * c.stats.digestMeat);

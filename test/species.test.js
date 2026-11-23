@@ -60,3 +60,27 @@ test('extinct species are dropped', () => {
   t.update([], 5);
   assert.equal(t.species.length, 0);
 });
+
+test('a shift that reverts a recent shift is suppressed', () => {
+  const t = new SpeciesTracker();
+  const cs = pop(A, 12);
+  t.update(cs, 0);
+  for (const c of cs) c.genome.body.legs = 4;
+  assert.equal(t.update(cs, 5).filter((c) => c.kind === 'body-shift').length, 1);
+  for (const c of cs) c.genome.body.legs = 3;
+  assert.equal(t.update(cs, 60).length, 0);
+  for (const c of cs) c.genome.body.legs = 4;
+  assert.equal(t.update(cs, 90).length, 0);
+  for (const c of cs) c.genome.body.legs = 3;
+  assert.equal(t.update(cs, 400).length, 1); // long after: a real reversal
+});
+
+test('capCheckpoints keeps milestones and the most recent shifts', async () => {
+  const { capCheckpoints } = await import('../src/sim/species.js');
+  const list = [{ kind: 'first', id: 0 }, { kind: 'new-species', id: 1 },
+    ...Array.from({ length: 500 }, (_, i) => ({ kind: 'body-shift', id: i + 2 }))];
+  const out = capCheckpoints(list, 200);
+  assert.equal(out.length, 200);
+  assert.deepEqual(out.slice(0, 2).map((c) => c.kind), ['first', 'new-species']);
+  assert.equal(out.at(-1).id, 501);
+});

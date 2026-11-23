@@ -12,7 +12,7 @@ const GEOMS = {
 const FIXED_COLOR = { eye: 0xf4f4f0, mouth: 0x3a2a2a };
 
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
-const color = new THREE.Color(), red = new THREE.Color(0xd8402a);
+const color = new THREE.Color(), limbColor = new THREE.Color(), red = new THREE.Color(0xd8402a);
 
 // Local part matrices are cached per genome object (god-mode mutate replaces the genome, invalidating it).
 const localCache = new WeakMap();
@@ -54,18 +54,19 @@ export function createCreatureRenderer(scene, maxCreatures, heightAt) {
       const bob = moving ? Math.abs(Math.sin(time * 12 + c.id)) * 0.08 * c.genome.body.size : 0;
       world.compose(v.set(c.x, heightAt(c.x, c.z) + bob, c.z), q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -c.heading), sc.set(1, 1, 1));
       creatureColor(c.genome.body, color);
+      limbColor.copy(color).multiplyScalar(0.7);
       for (const part of localParts(c.genome)) {
         const mesh = meshes[part.type], i = counts[part.type]++;
         if (i >= mesh.instanceMatrix.count) continue;
         mesh.setMatrixAt(i, m4.multiplyMatrices(world, part.matrix));
         if (part.type === 'body' || part.type === 'leg' || part.type === 'antenna' || part.type === 'digit') {
-          mesh.setColorAt(i, part.type === 'body' ? color : color.clone().multiplyScalar(0.7));
+          mesh.setColorAt(i, part.type === 'body' ? color : limbColor);
         }
         if (part.type === 'body') bodyIds[i] = c.id;
       }
     }
     for (const [type, mesh] of Object.entries(meshes)) {
-      mesh.count = counts[type];
+      mesh.count = Math.min(counts[type], mesh.instanceMatrix.count);
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
