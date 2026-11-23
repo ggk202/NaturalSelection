@@ -8,7 +8,7 @@ const io = () => [new Float32Array(N_IN), new Float32Array(N_OUT)];
 const hidden = (b) => b.nodes.filter((n) => n.type === 'hid');
 
 test('layout constants', () => {
-  assert.equal(N_IN, 3 * RAY_CAP + 10);
+  assert.equal(N_IN, 3 * RAY_CAP + 17); // 10 body/terrain scalars + 7 map inputs
   assert.equal(N_OUT, 4);
 });
 

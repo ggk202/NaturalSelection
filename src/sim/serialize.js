@@ -2,8 +2,9 @@ import { World } from './world.js';
 import { Environment } from './environment.js';
 import { deriveStats } from './body.js';
 import { cloneBrain, brainCost } from './neat.js';
+import { encodeMap, decodeMap, toB64, fromB64 } from './memory.js';
 
-export const SCHEMA_VERSION = 3; // 3: evolvable brains + vision rays
+export const SCHEMA_VERSION = 4; // 4: mental maps + learned weights
 
 const g2j = (g) => ({ body: { ...g.body }, brain: cloneBrain(g.brain) });
 const j2g = g2j;
@@ -14,7 +15,8 @@ export function serializeWorld(w) {
     schemaVersion: SCHEMA_VERSION,
     settings: w.settings, time: w.time, rng: w.rng.state(), nextId: w.nextId,
     nextLabelAt: w.nextLabelAt, nextSpeciesAt: w.nextSpeciesAt,
-    creatures: w.creatures.map(({ stats, threatNear, genome, lastOutputs, brainState, brainUpkeep, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState) })),
+    creatures: w.creatures.map(({ stats, threatNear, genome, lastOutputs, brainState, brainUpkeep, map, weights, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), map: encodeMap(map), weights: toB64(weights) })),
+    nextFadeAt: w.nextFadeAt,
     nextNodeId: w.nextNodeId,
     food: w.food.map((f) => ({ ...f })),
     hazards: w.env.hazards.map((h) => ({ ...h })),
@@ -36,10 +38,10 @@ export function deserializeWorld(o) {
   const w = new World({ ...o.settings, initialCreatures: 0 });
   w.settings = o.settings;
   w.time = o.time; w.nextId = o.nextId; w.nextNodeId = o.nextNodeId;
-  w.nextLabelAt = o.nextLabelAt; w.nextSpeciesAt = o.nextSpeciesAt;
+  w.nextLabelAt = o.nextLabelAt; w.nextFadeAt = o.nextFadeAt; w.nextSpeciesAt = o.nextSpeciesAt;
   w.creatures = o.creatures.map((c) => {
     const genome = j2g(c.genome);
-    return { ...c, genome, stats: deriveStats(genome.body), lastOutputs: Float32Array.from(c.lastOutputs), brainState: Float32Array.from(c.brainState), brainUpkeep: brainCost(genome.brain), actionCounters: { ...c.actionCounters } };
+    return { ...c, genome, stats: deriveStats(genome.body), lastOutputs: Float32Array.from(c.lastOutputs), brainState: Float32Array.from(c.brainState), brainUpkeep: brainCost(genome.brain), map: decodeMap(c.map), weights: new Float32Array(fromB64(c.weights)), actionCounters: { ...c.actionCounters } };
   });
   w.food = o.food.map((f) => ({ ...f }));
   w.env = new Environment(o.settings.env, w.rng, o.settings.worldSize, () => 0);

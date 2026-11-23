@@ -2,7 +2,8 @@
 // Node ids: inputs 0..N_IN-1, outputs N_IN..N_IN+N_OUT-1, hidden from a world-level counter.
 export const RAY_CAP = 13; // max rays any creature can have (eyes 0..6 -> 1..13 rays)
 export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
-export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias'];
+export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias',
+  'mapFoodAhead', 'mapFoodLeft', 'mapFoodRight', 'mapDangerAhead', 'mapDangerLeft', 'mapDangerRight', 'familiarity'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
 export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce'];
 export const N_OUT = OUTPUTS.length;
@@ -91,11 +92,14 @@ export function brainDistance(a, b) {
   return disjoint / n + 0.4 * (match ? wd / match : 0);
 }
 
+const MAP_FIRST = RAY_CAP * RAY_CHANNELS.length + SCALARS.indexOf('mapFoodAhead');
+
+// Energy/s for thinking: neurons, connections, reading the mental map, and learning.
 export function brainCost(b) {
-  let hid = 0, on = 0;
+  let hid = 0, on = 0, readsMap = false;
   for (const n of b.nodes) if (n.type === 'hid') hid++;
-  for (const c of b.conns) if (c.on) on++;
-  return 0.002 * hid + 0.0004 * on;
+  for (const c of b.conns) if (c.on) { on++; if (c.from >= MAP_FIRST && c.from < N_IN) readsMap = true; }
+  return 0.002 * hid + 0.0004 * on + (readsMap ? 0.0005 : 0) + 0.004 * (b.lr || 0);
 }
 
 // Compiled form cached per brain object (brains are never mutated in place).

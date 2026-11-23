@@ -1,7 +1,8 @@
 import { createRng } from './rng.js';
 import { randomGenome, mutate, cloneGenome } from './genome.js';
 import { deriveStats } from './body.js';
-import { runBrain, newState, brainCost, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
+import { runBrain, newState, brainCost, initWeights, learn, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
+import { createMap, inheritMap, remember, recall, fade } from './memory.js';
 import { castRays } from './vision.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
@@ -16,7 +17,7 @@ const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike 
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
-  maxRays: 9, foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
+  maxRays: 9, mapCell: 10, foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
@@ -44,6 +45,7 @@ export class World {
     this.stats = new StatsRecorder();
     this.checkpoints = [];
     this.nextLabelAt = LABEL_WINDOW;
+    this.nextFadeAt = 5;
     this.nextSpeciesAt = 0;
     this.nextId = 1;
     this.nextNodeId = 1000; // hidden neuron ids (shared by descendants)
@@ -74,6 +76,8 @@ export class World {
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
       energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0, kills: 0,
       lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainUpkeep: brainCost(genome.brain), stillRun: 0, strikeWindow: 0,
+      weights: initWeights(genome.brain), energyMark: null, normalCost: 0,
+      map: parent ? inheritMap(parent.map) : createMap(this.settings.worldSize, this.settings.mapCell),
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     if (genome.body.diet > 0.5) this.carnivoresSeen = true;
@@ -151,6 +155,13 @@ export class World {
     }
     out[S.hazardDist] = hz2;
     out[S.bias] = 1;
+    const m = c.map, look = 2 * m.cell;
+    for (const [side, a] of [['Ahead', 0], ['Left', -0.6], ['Right', 0.6]]) {
+      const x = c.x + Math.cos(c.heading + a) * look, z = c.z + Math.sin(c.heading + a) * look;
+      out[S[`mapFood${side}`]] = recall(m, x, z, 'food');
+      out[S[`mapDanger${side}`]] = recall(m, x, z, 'danger');
+    }
+    out[S.familiarity] = recall(m, c.x, c.z, 'visits');
     return out;
   }
 
@@ -178,6 +189,7 @@ export class World {
     hit.eaten = true;
     c.energy = Math.min(c.stats.maxEnergy, c.energy + hit.energy * c.stats.digestPlant);
     c.actionCounters.ate++;
+    remember(c.map, c.x, c.z, 'food', 0.5);
   }
 
   reproduce(c) {
@@ -185,6 +197,7 @@ export class World {
     if (this.creatures.length >= s.maxCreatures) return;
     if (c.energy <= c.genome.body.reproThreshold * c.stats.maxEnergy) return;
     const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng, this.nodeIds), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
+    c.normalCost += c.energy / 2; // giving birth is not a punishment
     c.energy /= 2;
     c.children++;
     child.energy = Math.min(child.stats.maxEnergy, c.energy);
@@ -199,13 +212,23 @@ export class World {
     for (let i = 0; i < n; i++) {
       const c = this.creatures[i];
       if (!c.alive) continue;
-      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs);
+      // Reward = energy change since this creature's last update, beyond its normal running costs.
+      // Credit goes to the activations that produced last step's actions (still in brainState).
+      if (c.energyMark !== null) {
+        const reward = Math.max(-1, Math.min(1, c.energy - c.energyMark + c.normalCost));
+        learn(c.genome.brain, c.brainState, c.weights, reward);
+        if (reward < -0.02) remember(c.map, c.x, c.z, 'danger', Math.min(1, -2 * reward));
+      }
+      c.energyMark = c.energy;
+      remember(c.map, c.x, c.z, 'visits', 1 / 127);
+      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs, c.weights);
       const st = c.stats, throttle = o[1];
       c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
       const v = throttle * st.speed * this.terrainSpeed(c);
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
-      c.energy -= (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
+      c.normalCost = (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size) * dt;
+      c.energy -= c.normalCost + this.envCost(c, inp) * dt;
       c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
       // Ambush tracking: a long still spell opens a short strike window once the creature moves.
@@ -237,6 +260,10 @@ export class World {
     if (t >= this.nextLabelAt) {
       this.nextLabelAt += LABEL_WINDOW;
       for (const c of this.creatures) { c.label = labelOf(c.actionCounters) ?? c.label; c.actionCounters = emptyCounters(); }
+    }
+    if (t >= this.nextFadeAt) {
+      this.nextFadeAt += 5;
+      for (const c of this.creatures) fade(c.map);
     }
     if (t >= this.nextSpeciesAt) {
       this.nextSpeciesAt += SPECIES_EVERY;
@@ -347,6 +374,7 @@ export class World {
     c.stats = deriveStats(c.genome.body);
     c.brainState = newState(c.genome.brain);
     c.brainUpkeep = brainCost(c.genome.brain);
+    c.weights = initWeights(c.genome.brain); // memories (map) are kept: they aren't genetic
     c.energy = Math.min(c.energy, c.stats.maxEnergy);
     this.emit({ type: 'god', action: 'mutate', id });
   }
