@@ -45,3 +45,6 @@ export function genomeDistance(a, b) {
   for (const { key, min, max } of GENES) if (key !== 'hue') d += Math.abs(a.body[key] - b.body[key]) / (max - min);
   return d / (GENES.length - 1) + 0.15 * brainDistance(a.brain, b.brain);
 }
+
+// 1 for clones, falling to 0 for strangers (genome distance ≥ 0.5).
+export const relatedness = (a, b) => Math.max(0, 1 - genomeDistance(a, b) / 0.5);

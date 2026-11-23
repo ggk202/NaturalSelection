@@ -15,7 +15,7 @@ export function serializeWorld(w) {
     schemaVersion: SCHEMA_VERSION,
     settings: w.settings, time: w.time, rng: w.rng.state(), nextId: w.nextId,
     nextLabelAt: w.nextLabelAt, nextSpeciesAt: w.nextSpeciesAt,
-    creatures: w.creatures.map(({ stats, threatNear, genome, lastOutputs, brainState, brainUpkeep, map, weights, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), map: encodeMap(map), weights: toB64(weights) })),
+    creatures: w.creatures.map(({ stats, threatNear, nearestSeen, genome, lastOutputs, brainState, brainUpkeep, map, weights, ...c }) => ({ ...c, genome: g2j(genome), lastOutputs: Array.from(lastOutputs), brainState: Array.from(brainState), map: encodeMap(map), weights: toB64(weights) })),
     nextFadeAt: w.nextFadeAt,
     nextNodeId: w.nextNodeId,
     food: w.food.map((f) => ({ ...f })),

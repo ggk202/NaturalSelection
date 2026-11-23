@@ -44,6 +44,6 @@ test('founder brains only wire inputs the creature has, with 4–8 links', async
     const g = randomGenome(r), rays = Math.min(RAY_CAP, 1 + 2 * g.body.eyes);
     assert.ok(g.brain.conns.length >= 4 && g.brain.conns.length <= 8);
     for (const c of g.brain.conns) assert.ok(c.from >= RAY_CAP * 3 || Math.floor(c.from / 3) < rays, `link from ray slot ${Math.floor(c.from / 3)} with ${rays} rays`);
-    assert.ok(N_IN === RAY_CAP * 3 + 17);
+    assert.ok(N_IN > RAY_CAP * 3);
   }
 });

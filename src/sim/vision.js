@@ -68,7 +68,8 @@ export function castRays(world, c, rays, out, offset) {
     if (v > out[i]) out[i] = v;
   });
 
-  let threat = false;
+  let threat = false, strongest = 0;
+  c.nearestSeen = null;
   world.creatureGrid.query(c.x, c.z, range, (o) => {
     if (o === c) return;
     const dx = world.delta(c.x, o.x), dz = world.delta(c.z, o.z), d2 = dx * dx + dz * dz;
@@ -81,6 +82,7 @@ export function castRays(world, c, rays, out, offset) {
     const val = o.stats.attack > st.defense ? -v : o.stats.defense < st.attack ? v : 0.3 * v;
     if (Math.abs(val) > Math.abs(out[i])) out[i] = val;
     if (val < -0.3) threat = true;
+    if (v > strongest) { strongest = v; c.nearestSeen = o; }
   });
   return threat;
 }

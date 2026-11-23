@@ -3,7 +3,8 @@
 export const RAY_CAP = 13; // max rays any creature can have (eyes 0..6 -> 1..13 rays)
 export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
 export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias',
-  'mapFoodAhead', 'mapFoodLeft', 'mapFoodRight', 'mapDangerAhead', 'mapDangerLeft', 'mapDangerRight', 'familiarity'];
+  'mapFoodAhead', 'mapFoodLeft', 'mapFoodRight', 'mapDangerAhead', 'mapDangerLeft', 'mapDangerRight', 'familiarity',
+  'kinNear'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
 export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce'];
 export const N_OUT = OUTPUTS.length;
@@ -93,12 +94,21 @@ export function brainDistance(a, b) {
 }
 
 const MAP_FIRST = RAY_CAP * RAY_CHANNELS.length + SCALARS.indexOf('mapFoodAhead');
+const MAP_LAST = RAY_CAP * RAY_CHANNELS.length + SCALARS.indexOf('familiarity');
+
+// Display stat: how much mind a creature carries (its energy cost is brainCost).
+export function intelligence(b) {
+  let hid = 0, on = 0, readsMap = false;
+  for (const n of b.nodes) if (n.type === 'hid') hid++;
+  for (const c of b.conns) if (c.on) { on++; if (c.from >= MAP_FIRST && c.from <= MAP_LAST) readsMap = true; }
+  return hid + 0.25 * on + 20 * (b.lr || 0) + (readsMap ? 2 : 0);
+}
 
 // Energy/s for thinking: neurons, connections, reading the mental map, and learning.
 export function brainCost(b) {
   let hid = 0, on = 0, readsMap = false;
   for (const n of b.nodes) if (n.type === 'hid') hid++;
-  for (const c of b.conns) if (c.on) { on++; if (c.from >= MAP_FIRST && c.from < N_IN) readsMap = true; }
+  for (const c of b.conns) if (c.on) { on++; if (c.from >= MAP_FIRST && c.from <= MAP_LAST) readsMap = true; }
   return 0.002 * hid + 0.0004 * on + (readsMap ? 0.0005 : 0) + 0.004 * (b.lr || 0);
 }
 

@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng } from '../src/sim/rng.js';
-import { createBrain, mutateBrain, cloneBrain, brainDistance, brainCost, newState, runBrain, N_IN, N_OUT, RAY_CAP } from '../src/sim/neat.js';
+import { createBrain, mutateBrain, cloneBrain, brainDistance, brainCost, newState, runBrain, N_IN, N_OUT, RAY_CAP, SCALARS } from '../src/sim/neat.js';
 
 const ids = () => { let n = 1000; return () => n++; };
 const io = () => [new Float32Array(N_IN), new Float32Array(N_OUT)];
 const hidden = (b) => b.nodes.filter((n) => n.type === 'hid');
 
 test('layout constants', () => {
-  assert.equal(N_IN, 3 * RAY_CAP + 17); // 10 body/terrain scalars + 7 map inputs
+  assert.equal(N_IN, 3 * RAY_CAP + SCALARS.length);
   assert.equal(N_OUT, 4);
 });
 

@@ -1,5 +1,5 @@
 import { createRng } from './rng.js';
-import { randomGenome, mutate, cloneGenome } from './genome.js';
+import { randomGenome, mutate, cloneGenome, relatedness } from './genome.js';
 import { deriveStats } from './body.js';
 import { runBrain, newState, brainCost, initWeights, learn, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
 import { createMap, inheritMap, remember, recall, fade } from './memory.js';
@@ -162,6 +162,7 @@ export class World {
       out[S[`mapDanger${side}`]] = recall(m, x, z, 'danger');
     }
     out[S.familiarity] = recall(m, c.x, c.z, 'visits');
+    out[S.kinNear] = c.nearestSeen ? relatedness(c.genome, c.nearestSeen.genome) : 0;
     return out;
   }
 
