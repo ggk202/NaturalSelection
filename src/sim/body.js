@@ -30,11 +30,12 @@ export function paramsFromPlan(plan) {
   const legs = parts.filter((q) => q.parent === 0 && elongated(q));
   const legSet = new Set(legs.map((q) => q.index));
   const toes = parts.filter((q) => legSet.has(q.parent)).length;
-  let eyes = 0, eyeW = 0, antennae = 0, mouth = 0, total = 0, fur = 0, shell = 0, spikes = 0, mass = 0, grippers = 0, dexterity = 0, strength = 0;
+  let limbVol = 0, eyes = 0, eyeW = 0, antennae = 0, mouth = 0, total = 0, fur = 0, shell = 0, spikes = 0, mass = 0, grippers = 0, dexterity = 0, strength = 0;
   const depth = (q) => (q.parent < 0 ? 0 : 1 + depth(parts[q.parent]));
   for (const q of parts) {
     const v = vol(q);
     total += v;
+    if (q.parent >= 0 && !q.eyes && !q.mouth) limbVol += v;
     if (q.covering === 'fur') fur += v; else if (q.covering === 'shell') shell += v; else if (q.covering === 'spikes') spikes += v;
     mass += v * (q.covering === 'shell' ? 1.6 : q.covering === 'fur' ? 1.1 : 1);
     eyes += q.eyes; eyeW += q.eyes * q.eyeSize; antennae += q.antennae; mouth = Math.max(mouth, q.mouth);
@@ -48,7 +49,7 @@ export function paramsFromPlan(plan) {
     insulation: total ? fur / total : 0,
     // physical extras
     parts: parts.length, joints: parts.length - 1, mass, rootVol: vol(root), grippers, dexterity: clamp01(dexterity),
-    shell: total ? shell / total : 0, spikes: total ? spikes / total : 0, muscle: strength,
+    shell: total ? shell / total : 0, spikes: total ? spikes / total : 0, muscle: strength, limbVol,
   };
 }
 
@@ -73,7 +74,8 @@ export function deriveStats(body) {
     heatResist: 1 - b.insulation,
     upkeep: 0.02 * b.size ** 2 + 0.004 * b.legs * (1 + 0.2 * b.digits) + 0.003 * b.eyes * b.eyeSize
       + 0.002 * b.antennae + 0.002 * b.mouth + 0.002 * b.insulation + 0.003 * swim + 0.003 * climb
-      + 0.01 * shell + 0.008 * spikes + 0.003 * grippers + 0.0015 * joints,
+      + 0.01 * shell + 0.008 * spikes + 0.003 * grippers + 0.0015 * joints
+      + 0.05 * (b.limbVol || 0), // bulky limbs are costly to carry
     swim, climb,
     camo: clamp01(1.2 - b.size), // only matters in forest
     maxEnergy: 10 * b.size ** 2,

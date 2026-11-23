@@ -20,7 +20,9 @@ function slotsFor(n) {
 // Forest cells along a ray attenuate visibility (×0.7 each); below 0.25 the ray sees no farther.
 export function castRays(world, c, rays, out, offset) {
   const t = world.terrain, st = c.stats;
-  const range = st.senseRange * BIOMES[t.biomeAt(c.x, c.z)].sightMul;
+  // A spinning head blurs vision: full sight below 2 rad/s, none above 4.
+  const blur = Math.max(0, Math.min(1, 1 - ((c.spin || 0) - 2) / 2));
+  const range = st.senseRange * BIOMES[t.biomeAt(c.x, c.z)].sightMul * blur;
   out.fill(0, offset, offset + RAY_CAP * 3);
   const n = Math.max(1, Math.min(rays, RAY_CAP)), full = st.fov >= TAU - 1e-6;
   const spacing = n === 1 ? st.fov : full ? TAU / n : st.fov / (n - 1);

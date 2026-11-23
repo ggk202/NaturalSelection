@@ -9,6 +9,9 @@ import { BIOME } from './biomes.js';
 export const PHYS_PARTS = MAX_JOINTS + 1;
 const SUBSTEPS = 3;
 const MOTOR = 1000; // motor stiffness per unit joint strength (acceleration-based); weaker motors stall against ground friction
+// shortcut: 15 collision groups, so ~1 in 15 creature pairs pass through each other; fine at current densities.
+const groupsOf = (id) => { const g = 1 + (id % 15); return ((1 << g) << 16) | (0xffff & ~(1 << g)); };
+const MAX_LIN = 12, MAX_ANG = 10; // speed caps: no free-energy launches or spins
 const GRIP = 40; // 1/s sideways drag on touching parts; keep GRIP·substep < 1 for stability
 const v3 = (a) => ({ x: a[0], y: a[1], z: a[2] });
 const q4 = (q) => ({ x: q[0], y: q[1], z: q[2], w: q[3] });
@@ -35,7 +38,7 @@ export function buildBody(world, c, x, z, heading) {
     const rb = pw.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(x + at[0], y0 + at[1], z + at[2])
       .setRotation(q4(hq)).setLinearDamping(0.1).setAngularDamping(0.5).setCanSleep(false)); // motors don't wake sleeping bodies
     pw.createCollider(RAPIER.ColliderDesc.cuboid(p.size[0] / 2, p.size[1] / 2, p.size[2] / 2).setRotation(q4(p.rot))
-      .setDensity(density(p)).setFriction(0.05).setRestitution(0), rb); // near-frictionless: GRIP gives directional traction
+      .setDensity(density(p)).setFriction(0.05).setRestitution(0).setCollisionGroups(groupsOf(c.id)), rb); // own parts never collide // near-frictionless: GRIP gives directional traction
     bodies.push(rb.handle);
     if (p.parent < 0) continue;
     const parent = parts[p.parent], j = p.joint;
@@ -48,6 +51,7 @@ export function buildBody(world, c, x, z, heading) {
   c.ph = { bodies, joints, head: headIndex(parts) };
   c.parts = parts;
   c.stamina = c.stats.endurance;
+  c.spin = 0; c.upright = 1; c.rolling = false;
 }
 
 export function removeBody(world, c) {
@@ -108,12 +112,17 @@ function applyForces(world) {
     c.ph.bodies.forEach((h, i) => {
       const b = pw.getRigidBody(h), p = b.translation(), part = c.parts[i], s = part.size;
       const wet = t.biomeAt(p.x, p.z) === BIOME.lake && p.y < t.waterHeight;
+      const lv = b.linvel(), av = b.angvel(), ls = Math.hypot(lv.x, lv.y, lv.z), as = Math.hypot(av.x, av.y, av.z);
+      if (ls > MAX_LIN) b.setLinvel({ x: lv.x * MAX_LIN / ls, y: lv.y * MAX_LIN / ls, z: lv.z * MAX_LIN / ls }, true);
+      if (as > MAX_ANG) b.setAngvel({ x: av.x * MAX_ANG / as, y: av.y * MAX_ANG / as, z: av.z * MAX_ANG / as }, true);
+      const touching = p.y - Math.max(...s) / 2 - t.heightAt(p.x, p.z) < 0.15;
       b.resetForces(false);
       b.setLinearDamping(wet ? 2 : 0.1);
+      b.setAngularDamping(touching ? 4 : 0.5); // rolling resistance on the ground
       if (wet) b.addForce({ x: 0, y: 1.2 * 9.81 * s[0] * s[1] * s[2] * density(part), z: 0 }, true);
       // Directional ground grip (scales, claws): parts on the ground resist sliding sideways far more than
       // along their length, which is what turns wiggling into crawling.
-      else if (p.y - Math.max(...s) / 2 - t.heightAt(p.x, p.z) < 0.15) {
+      else if (touching) {
         const a = qrot(qmul(arr(b.rotation()), part.rot), [1, 0, 0]), v = b.linvel(), m = b.mass();
         const along = v.x * a[0] + v.y * a[1] + v.z * a[2];
         b.addForce({ x: -GRIP * m * (v.x - along * a[0]), y: 0, z: -GRIP * m * (v.z - along * a[2]) }, true);
@@ -126,6 +135,7 @@ function applyForces(world) {
 export function stepPhysics(world) {
   const pw = world.physics.world, t = world.terrain, W = world.settings.worldSize, dt = world.settings.dt;
   for (let k = 0; k < SUBSTEPS; k++) { applyForces(world); world.physics.step(dt / SUBSTEPS); }
+  applyForces(world); // final speed clamp after the last substep
   for (const c of world.creatures) {
     if (!c.ph) continue;
     const root = pw.getRigidBody(c.ph.bodies[0]).translation();
@@ -134,8 +144,21 @@ export function stepPhysics(world) {
     const head = pw.getRigidBody(c.ph.bodies[c.ph.head]), hp = head.translation();
     const fwd = qrot(qmul(arr(head.rotation()), c.parts[c.ph.head].rot), [1, 0, 0]);
     c.x = world.wrap(hp.x); c.z = world.wrap(hp.z); c.y = hp.y;
+    // Roller detector: smoothed body spin and uprightness of the root.
+    const rb = pw.getRigidBody(c.ph.bodies[0]), w = rb.angvel();
+    c.spin = 0.9 * c.spin + 0.1 * Math.hypot(w.x, w.y, w.z);
+    c.upright = 0.9 * c.upright + 0.1 * qrot(arr(rb.rotation()), [0, 1, 0])[1];
+    c.rolling = c.spin > 3 || c.upright < 0.3;
     if (Math.abs(fwd[0]) + Math.abs(fwd[2]) > 1e-3) c.heading = (Math.atan2(fwd[2], fwd[0]) + 2 * Math.PI) % (2 * Math.PI);
     // Safety net: a body that has gone non-finite or fallen through the ground is dead.
     if (!Number.isFinite(hp.x + hp.y + hp.z) || hp.y < t.heightAt(c.x, c.z) - 5) c.physicsFault = true;
   }
+}
+
+// Eating and biting need a steady, upright head: rolling bodies can't feed.
+export function headSteady(world, c) {
+  if (!c.ph) return true;
+  const b = world.physics.world.getRigidBody(c.ph.bodies[c.ph.head]), w = b.angvel();
+  const up = qrot(qmul(arr(b.rotation()), c.parts[c.ph.head].rot), [0, 1, 0])[1];
+  return Math.hypot(w.x, w.y, w.z) < 3 && up > 0.3;
 }

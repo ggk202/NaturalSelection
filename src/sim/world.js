@@ -4,7 +4,7 @@ import { deriveStats } from './body.js';
 import { runBrain, newState, brainCost, initWeights, learn, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
 import { createMap, inheritMap, remember, recall, fade } from './memory.js';
 import { createPhysics } from './physics.js';
-import { buildBody, removeBody, applyMotors, senseBody, stepPhysics } from './creature-physics.js';
+import { buildBody, removeBody, applyMotors, senseBody, stepPhysics, headSteady } from './creature-physics.js';
 import { castRays } from './vision.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
@@ -214,7 +214,7 @@ export class World {
   }
 
   eat(c) {
-    if (c.stats.digestPlant <= 0.1) return;
+    if (c.stats.digestPlant <= 0.1 || !headSteady(this, c)) return;
     const r = 0.5 * traitsOf(c.genome).size + 0.3;
     let hit = null;
     this.foodGrid.query(c.x, c.z, r, (f) => {
@@ -403,6 +403,7 @@ export class World {
 
   attack(c) {
     c.energy -= 0.02 * this.settings.dt;
+    if (!headSteady(this, c)) return;
     const reach = 0.6 * traitsOf(c.genome).size;
     let target = null, best = Infinity;
     this.creatureGrid.query(c.x, c.z, reach + 1, (o) => {

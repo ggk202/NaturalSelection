@@ -30,7 +30,7 @@ export class StatsRecorder {
     const biomes = Object.fromEntries(BIOMES.map((b) => [b.key, 0]));
     if (world.terrain) for (const c of cs) biomes[BIOMES[world.terrain.biomeAt(c.x, c.z)].key]++;
     const carn = cs.filter((c) => traitsOf(c.genome).diet > 0.5).length;
-    this.series.push({ t: world.time, pop: cs.length, herb: cs.length - carn, carn, food: world.food.length, avg, labels, biomes, calls, species: world.tracker ? world.tracker.species.length : 0 });
+    this.series.push({ t: world.time, pop: cs.length, herb: cs.length - carn, carn, food: world.food.length, avg, labels, biomes, calls, rollers: cs.length ? cs.filter((c) => c.rolling).length / cs.length : 0, species: world.tracker ? world.tracker.species.length : 0 });
     // Halve resolution when full so the series stays bounded and evenly spaced.
     if (this.series.length > MAX_POINTS) {
       this.series = this.series.filter((_, i) => i % 2 === 0);

@@ -16,7 +16,7 @@ function terrainCollider(world, terrain) {
     heights[col * (n + 1) + row] = terrain.heightAt(x, z);
   }
   const desc = RAPIER.ColliderDesc.heightfield(n, n, heights, { x: span, y: 1, z: span })
-    .setTranslation(W / 2, 0, W / 2).setFriction(1);
+    .setTranslation(W / 2, 0, W / 2).setFriction(1).setCollisionGroups((1 << 16) | 0xffff); // ground: group 0, hits everything
   return world.createCollider(desc);
 }
 

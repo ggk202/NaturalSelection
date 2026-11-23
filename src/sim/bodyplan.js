@@ -49,10 +49,10 @@ export const TEMPLATES = {
   }),
   quadruped: () => ({
     nodes: [
-      node({ size: [1.4, 0.55, 0.7], edges: [
+      node({ size: [1.4, 0.55, 0.9], edges: [ // wide stance, strong legs: standing comes before walking
         edge({ to: 1, face: 0, axis: 'z', lo: -0.4, hi: 0.4 }),
-        edge({ to: 2, face: 3, u: 0.7, v: 0.8, axis: 'z', lo: -0.7, hi: 0.7, strength: 1.2, symmetric: true }),
-        edge({ to: 2, face: 3, u: -0.7, v: 0.8, axis: 'z', lo: -0.7, hi: 0.7, strength: 1.2, symmetric: true }),
+        edge({ to: 2, face: 3, u: 0.75, v: 0.95, axis: 'z', lo: -0.7, hi: 0.7, strength: 2, symmetric: true }),
+        edge({ to: 2, face: 3, u: -0.75, v: 0.95, axis: 'z', lo: -0.7, hi: 0.7, strength: 2, symmetric: true }),
       ] }),
       node({ size: [0.5, 0.45, 0.45], eyes: 2, eyeSize: 0.7, mouth: 0.8 }),
       node({ size: [0.8, 0.22, 0.22] }),
@@ -60,8 +60,8 @@ export const TEMPLATES = {
   }),
   biped: () => ({
     nodes: [
-      node({ size: [0.8, 0.7, 0.6], eyes: 2, eyeSize: 0.7, mouth: 0.8, edges: [
-        edge({ to: 1, face: 3, u: 0, v: 0.6, axis: 'z', lo: -0.9, hi: 0.9, strength: 1.5, symmetric: true }),
+      node({ size: [0.8, 0.7, 0.9], eyes: 2, eyeSize: 0.7, mouth: 0.8, edges: [
+        edge({ to: 1, face: 3, u: 0, v: 0.8, axis: 'z', lo: -0.9, hi: 0.9, strength: 2.5, symmetric: true }),
       ] }),
       node({ size: [1.2, 0.28, 0.28] }),
     ],
@@ -142,6 +142,16 @@ function attach(n, nodeIndex, parent, parentIndex, e, mirror) {
 }
 
 // ---------- mutation ----------
+// Organ-free parts below the root (limbs, tails, segments) stay thinner than they are long: no plates or blobs.
+function anatomize(p) {
+  p.nodes.forEach((n, i) => {
+    if (i === 0 || n.eyes || n.mouth) return;
+    n.size[1] = Math.min(n.size[1], 0.6 * n.size[0]);
+    n.size[2] = Math.min(n.size[2], 0.6 * n.size[0]);
+  });
+  return p;
+}
+
 export function mutateBodyPlan(plan, rate, rng) {
   const p = cloneBodyPlan(plan), scaleR = rate / 0.08, j = (v, s) => v + rng.gauss() * s;
   for (const n of p.nodes) {
@@ -176,7 +186,7 @@ export function mutateBodyPlan(plan, rate, rng) {
     const withEdges = p.nodes.filter((n) => n.edges.length);
     if (withEdges.length) { const n = withEdges[rng.int(0, withEdges.length - 1)]; n.edges.splice(rng.int(0, n.edges.length - 1), 1); }
   }
-  return p;
+  return anatomize(p);
 }
 
 // ---------- summaries (for species, charts, distance) ----------
