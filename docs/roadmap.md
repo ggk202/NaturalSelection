@@ -37,3 +37,10 @@ Next, in order. Each project is designed, then built, one at a time:
      - **Needs:** a compass sense for a shared reference frame; senses for a place's biome, direction, distance and landmarks;
        and a way for speakers to "think about" a remembered spot.
    - **Analytics** detect words that track biome, direction or distance (for example "mi-to ≈ forest, north").
+
+## Later: speech bubbles with translation (requested 2026-11-24)
+- A speech bubble above each calling creature shows the syllables it is saying (e.g. "ka-ru").
+- **Translation:** each word is translated through its species' detected lexicon (from meaning detection), e.g.
+  "ka" → "danger!" or "mi-to" → "food, north". Words with no detected meaning show as untranslated ("?").
+  The translation is only as good as the analytics: it reports what a word reliably goes with, never a scripted meaning.
+- Best built alongside project 5 (word sequences and location descriptions), since single syllables give only one-word translations.
