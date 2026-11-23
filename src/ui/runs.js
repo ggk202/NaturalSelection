@@ -88,7 +88,7 @@ export function mountRuns(root, app) {
     detail.hidden = false;
     detailTitle.textContent = `${cp.title} · ${fmtTime(cp.time)}`;
     pv.show(cp.genome);
-    detailTable.replaceChildren(...Object.entries(cp.avgBody).filter(([k]) => k !== 'hue').map(([k, v]) => h('tr', {}, h('th', {}, `avg ${k}`), h('td', {}, v.toFixed(2)))));
+    detailTable.replaceChildren(...Object.entries(cp.avgBody).filter(([k, v]) => k !== 'hue' && typeof v === 'number').map(([k, v]) => h('tr', {}, h('th', {}, `avg ${k}`), h('td', {}, v.toFixed(2)))));
   }
 
   // --- Toast + storage warning ---

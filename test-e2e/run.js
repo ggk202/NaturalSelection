@@ -39,6 +39,7 @@ for (const [name, fn] of Object.entries(checks)) {
   } catch (e) {
     failed++;
     console.log(`FAIL ${name}: ${e.message.split('\n')[0]}`);
+    if (errors.length) console.log('  page errors:', errors.slice(0, 3).join(' | '));
   }
   await context.close();
 }
