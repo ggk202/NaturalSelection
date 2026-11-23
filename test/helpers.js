@@ -11,4 +11,5 @@ export function biasBrain(biases = {}) {
 
 export const BODY = { size: 1, legs: 2, digits: 1, eyes: 2, eyeSize: 1, antennae: 0, mouth: 0.8, diet: 0, hue: 0.3, insulation: 0.5, reproThreshold: 0.7 };
 export const genome = (body = {}, biases = {}) => ({ body: { ...BODY, ...body }, brain: biasBrain(biases) });
-export const quiet = { initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0 };
+// Legacy tests run on a flat 100-unit plains world.
+export const quiet = { worldSize: 100, flat: true, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0 };

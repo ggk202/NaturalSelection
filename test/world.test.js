@@ -112,3 +112,10 @@ test('elite remembers most prolific parents', () => {
   assert.equal(w.elite.length, 1);
   assert.equal(w.elite[0].children, 1);
 });
+
+test('default settings are complete and finite', async () => {
+  const { DEFAULT_SETTINGS } = await import('../src/sim/world.js');
+  for (const k of ['seed', 'worldSize', 'waterLevel', 'initialCreatures', 'maxCreatures', 'foodRate', 'maxFood', 'foodEnergy', 'mutationRate', 'dt', 'predatorMin', 'respawnMin']) {
+    assert.ok(Number.isFinite(DEFAULT_SETTINGS[k]), k);
+  }
+});

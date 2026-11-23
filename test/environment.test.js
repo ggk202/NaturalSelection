@@ -31,7 +31,7 @@ test('cold hurts uninsulated more', () => {
 
 test('heat hurts insulated', () => {
   const env = { ...OFF, temperature: true }, warm = { size: 1, insulation: 1 };
-  assert.ok(energyAfter(env, 50, 99, warm).e < energyAfter(OFF, 50, 99, warm).e);
+  assert.ok(energyAfter(env, 50, 50, warm).e < energyAfter(OFF, 50, 50, warm).e); // z=W/2 is the hot equator
 });
 
 test('hazard drains energy inside only', () => {

@@ -5,7 +5,7 @@ import { createRng } from '../src/sim/rng.js';
 
 const io = () => [new Float32Array(INPUTS.length), new Float32Array(OUTPUTS.length)];
 
-test('weight count is 140', () => assert.equal(BRAIN_WEIGHT_COUNT, 140));
+test('weight count is 188', () => assert.equal(BRAIN_WEIGHT_COUNT, 188));
 
 test('zero weights give neutral output', () => {
   const [i, o] = io(); i.fill(0.7);

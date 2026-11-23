@@ -18,10 +18,10 @@ export class Environment {
     }
   }
   season(time) { return this.cfg.seasons ? Math.sin((2 * Math.PI * time) / this.cfg.seasonLength) : 0; }
-  // North edge (z=0) is cold, south edge hot; seasons shift everything.
-  temperature(time, x, z) {
+  // Map temperature (latitude, elevation, noise) shifted by season and biome; scaled by tempAmp.
+  temperature(time, x, z, terrain, biome) {
     if (!this.cfg.temperature) return 0;
-    return clamp(this.cfg.tempAmp * (0.4 * this.season(time) + 0.8 * ((2 * z) / this.worldSize - 1)), -1, 1);
+    return clamp(this.cfg.tempAmp * (terrain.tempAt(x, z) + 0.4 * this.season(time)) + biome.tempOffset, -1, 1);
   }
   foodMultiplier(time) { return clamp(1 + this.cfg.foodSeasonAmp * this.season(time), 0, 2); }
 }

@@ -2,7 +2,7 @@ import { World } from './world.js';
 import { Environment } from './environment.js';
 import { deriveStats } from './body.js';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2; // 2: terrain + 18 brain inputs
 
 const g2j = (g) => ({ body: { ...g.body }, brain: Array.from(g.brain) });
 const j2g = (g) => ({ body: { ...g.body }, brain: Float32Array.from(g.brain) });

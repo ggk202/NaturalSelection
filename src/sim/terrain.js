@@ -28,7 +28,9 @@ export function createTerrain({ seed, worldSize: W, waterLevel = 0.22, flat = fa
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const k = j * n + i;
     height[k] = flat ? 0 : height[k] ** 1.2 * MAX_HEIGHT;
-    const t = (temp[k] * 2 - 1) * 0.5 + 0.6 * Math.cos((2 * Math.PI * j) / n) - 0.08 * height[k];
+    // Latitude: z=0 (and the wrapped edge) is the cold pole, z=W/2 the hot equator.
+    const lat = -0.8 * Math.cos((2 * Math.PI * j) / n);
+    const t = flat ? lat : (temp[k] * 2 - 1) * 0.5 + 0.75 * lat - 0.08 * height[k];
     temp[k] = Math.max(-1, Math.min(1, t));
     const m = moisture[k], h = height[k];
     biome[k] = flat ? BIOME.plains
@@ -38,6 +40,8 @@ export function createTerrain({ seed, worldSize: W, waterLevel = 0.22, flat = fa
       : m < 0.4 && temp[k] > -0.05 ? BIOME.desert
       : m > 0.52 ? BIOME.forest
       : BIOME.plains;
+    // Steepen peaks so climbing ability matters in the mountains.
+    if (biome[k] === BIOME.mountain) height[k] += (h - 0.68 * MAX_HEIGHT) * 2.5;
   }
 
   const wrapI = (i) => ((i % n) + n) % n;

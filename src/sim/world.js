@@ -7,12 +7,14 @@ import { Environment, DEFAULT_ENV } from './environment.js';
 import { labelOf, emptyCounters } from './behavior.js';
 import { SpeciesTracker, capCheckpoints } from './species.js';
 import { StatsRecorder } from './stats.js';
+import { createTerrain } from './terrain.js';
+import { BIOMES, BIOME } from './biomes.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 
 export const DEFAULT_SETTINGS = {
-  seed: 1, worldSize: 100, initialCreatures: 60, maxCreatures: 400,
-  foodRate: 4, maxFood: 300, foodEnergy: 3, mutationRate: 0.08, dt: 1 / 20,
+  seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
+  foodRate: 16, maxFood: 1200, foodEnergy: 3, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
@@ -45,11 +47,13 @@ export class World {
     this.carnivoresSeen = false;
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
+    this.terrain = createTerrain(s);
     this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
     for (let i = 0; i < s.initialCreatures; i++) {
-      this.spawn(randomGenome(this.rng), this.rng.range(0, s.worldSize), this.rng.range(0, s.worldSize));
+      const p = this.randomLandPoint();
+      this.spawn(randomGenome(this.rng), p.x, p.z);
     }
-    for (let i = 0; i < s.maxFood / 2; i++) this.addFoodAt(this.rng.range(0, s.worldSize), this.rng.range(0, s.worldSize));
+    for (let i = 0; i < s.maxFood / 2; i++) this.spawnOneFood();
   }
 
   spawn(genome, x, z, parent = null) {
@@ -68,8 +72,42 @@ export class World {
 
   addFoodAt(x, z) {
     if (this.food.length >= this.settings.maxFood) return;
-    this.food.push({ id: this.nextId++, x: this.wrap(x), z: this.wrap(z), energy: this.settings.foodEnergy });
+    this.food.push(this.makeFood(x, z));
   }
+
+  makeFood(x, z) {
+    x = this.wrap(x); z = this.wrap(z);
+    const b = this.terrain.biomeAt(x, z);
+    return { id: this.nextId++, x, z, energy: this.settings.foodEnergy, type: b === BIOME.forest ? 'fruit' : b === BIOME.lake ? 'water' : 'plant' };
+  }
+
+  // Food lands preferentially in fertile biomes (rejection sampling on fertility).
+  spawnOneFood() {
+    const W = this.settings.worldSize;
+    for (let tries = 0; tries < 12; tries++) {
+      const x = this.rng.range(0, W), z = this.rng.range(0, W);
+      if (this.rng.next() * 2 < BIOMES[this.terrain.biomeAt(x, z)].fertility) return this.addFoodAt(x, z);
+    }
+  }
+
+  randomLandPoint() {
+    const W = this.settings.worldSize;
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 50; tries++) {
+      x = this.rng.range(0, W); z = this.rng.range(0, W);
+      if (!this.terrain.isWater(x, z)) break;
+    }
+    return { x, z };
+  }
+
+  biomeOf(c) { return BIOMES[this.terrain.biomeAt(c.x, c.z)]; }
+
+  temperatureAt(x, z) {
+    return this.env.temperature(this.time, x, z, this.terrain, BIOMES[this.terrain.biomeAt(x, z)]);
+  }
+
+  // Energy/s lost to the biome itself (drowning in lakes scales with lack of swimming).
+  biomeDrain(c, b) { return b.id === BIOME.lake ? b.drain * (1 - c.stats.swim) : b.drain; }
 
   emit(e) {
     this.events.push({ time: this.time, ...e });
@@ -81,11 +119,14 @@ export class World {
 
   // Nearest object within range and field of view; returns [dist/range, angle/π] or [1, 0].
   nearest(c, grid, filter, out, i) {
-    const range = c.stats.senseRange, halfFov = c.stats.fov / 2;
+    const range = c.senseNow, halfFov = c.stats.fov / 2, isCreature = grid === this.creatureGrid;
     let best = range * range, bx = 0, bz = 0, found = false;
     grid.query(c.x, c.z, range, (o) => {
       if (o === c || (filter && !filter(o))) return;
-      const dx = this.delta(c.x, o.x), dz = this.delta(c.z, o.z), d2 = dx * dx + dz * dz;
+      const dx = this.delta(c.x, o.x), dz = this.delta(c.z, o.z);
+      let d2 = dx * dx + dz * dz;
+      // Camouflage: in forest, small creatures appear farther away than they are.
+      if (isCreature && this.terrain.biomeAt(o.x, o.z) === BIOME.forest) d2 /= (1 - 0.6 * o.stats.camo) ** 2;
       if (d2 >= best) return;
       if (halfFov < Math.PI && Math.abs(angleDiff(Math.atan2(dz, dx), c.heading)) > halfFov) return;
       best = d2; bx = dx; bz = dz; found = true;
@@ -97,19 +138,28 @@ export class World {
   }
 
   sense(c, out) {
+    const t = this.terrain, biome = this.biomeOf(c);
+    c.senseNow = c.stats.senseRange * biome.sightMul;
     this.nearest(c, this.foodGrid, null, out, 0);
     const b = c.genome.body, st = c.stats;
     this.nearest(c, this.creatureGrid, (o) => o.stats.defense < st.attack, out, 2);
     c.threatNear = this.nearest(c, this.creatureGrid, (o) => o.stats.attack > st.defense, out, 4);
     this.nearest(c, this.creatureGrid, (o) => Math.abs(o.genome.body.diet - b.diet) < 0.25 && Math.abs(o.genome.body.size - b.size) < 0.4, out, 6);
     out[8] = c.energy / c.stats.maxEnergy;
-    out[9] = this.env.temperature(this.time, c.x, c.z);
+    out[9] = this.temperatureAt(c.x, c.z);
     out[10] = 1;
     for (const h of this.env.hazards) {
       const d = Math.max(0, Math.hypot(this.delta(c.x, h.x), this.delta(c.z, h.z)) - h.r) / st.senseRange;
       if (d < out[10]) out[10] = d;
     }
     out[11] = 1;
+    const hx = Math.cos(c.heading), hz = Math.sin(c.heading);
+    out[12] = biome.fertility / 2;
+    out[13] = Math.min(1, this.biomeDrain(c, biome) / 0.25);
+    out[14] = Math.max(0, 1 - biome.sightMul);
+    out[15] = Math.max(-1, Math.min(1, t.slopeAlong(c.x, c.z, c.heading)));
+    out[16] = t.isWater(c.x + 2 * hx, c.z + 2 * hz) ? 1 : 0;
+    out[17] = Math.max(-1, Math.min(1, 5 * (t.tempAt(c.x + 2 * hx, c.z + 2 * hz) - t.tempAt(c.x, c.z))));
     return out;
   }
 
@@ -121,8 +171,7 @@ export class World {
   spawnFood(dt) {
     const expected = this.settings.foodRate * dt * this.env.foodMultiplier(this.time);
     let n = Math.floor(expected) + (this.rng.next() < expected % 1 ? 1 : 0);
-    const W = this.settings.worldSize;
-    while (n-- > 0) this.addFoodAt(this.rng.range(0, W), this.rng.range(0, W));
+    while (n-- > 0) this.spawnOneFood();
   }
 
   eat(c) {
@@ -162,7 +211,7 @@ export class World {
       const o = think(c.genome.brain, this.sense(c, inp), c.lastOutputs);
       const st = c.stats, throttle = o[1];
       c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
-      const v = throttle * st.speed;
+      const v = throttle * st.speed * this.terrainSpeed(c);
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
       c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
@@ -205,10 +254,20 @@ export class World {
     if (this.stats.due(this.time)) this.stats.sample(this);
   }
 
-  // Extra energy/s from temperature and hazards; reuses the temperature/hazard inputs just sensed.
+  // Speed multiplier from biome, water and slope; 0 when a slope is too steep to climb.
+  terrainSpeed(c) {
+    const b = this.biomeOf(c), s = this.terrain.slopeAlong(c.x, c.z, c.heading);
+    if (s > 0.6 && c.stats.climb < s - 0.4) return 0;
+    let m = b.id === BIOME.lake ? 0.25 + 0.75 * c.stats.swim : b.moveMul;
+    m /= 1 + Math.max(0, s) * 2;
+    return m * (1 + Math.min(0.3, Math.max(0, -s)));
+  }
+
+  // Extra energy/s from temperature, biome and hazards; reuses the inputs just sensed.
   envCost(c, sensed) {
     const t = sensed[9], st = c.stats, cfg = this.settings.env;
     let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist));
+    cost += this.biomeDrain(c, this.biomeOf(c));
     if (sensed[10] === 0) cost += cfg.hazardDamage;
     return cost;
   }
@@ -288,7 +347,8 @@ export class World {
     const W = this.settings.worldSize;
     for (let i = 0; i < n; i++) {
       const src = this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng);
-      this.spawn(predatorGenome(src), this.rng.range(0, W), this.rng.range(0, W));
+      const p = this.randomLandPoint();
+      this.spawn(predatorGenome(src), p.x, p.z);
     }
     this.emit({ type: 'god', action: 'seedPredators', n });
   }
@@ -315,14 +375,16 @@ export class World {
           ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng)
           : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng));
         g.body.diet = Math.max(g.body.diet, 0.55);
-        this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
+        const p = this.randomLandPoint();
+        this.spawn(g, p.x, p.z);
       }
     }
     while (this.creatures.length < s.respawnMin) {
       const g = this.elite.length && this.rng.next() < 0.8
         ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng)
         : randomGenome(this.rng);
-      this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
+      const p = this.randomLandPoint();
+      this.spawn(g, p.x, p.z);
     }
   }
 }
