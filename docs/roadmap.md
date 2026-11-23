@@ -19,3 +19,12 @@ Next, in order. Each project is designed, then built, one at a time:
    No physics simulation.
 4. **Tool use.** World objects that dexterous creatures can handle (dexterity → tools).
 5. **Proto-language.** A framework for evolved communication, building on the signals from project 2.
+   Decisions (user, 2026-11-24):
+   - **Dynamic word sequences:** words are runs of syllables between pauses. Max word length is set by an
+     evolvable **attention span** trait (1–6 syllables, with an energy cost). It limits both speaking and the listener's
+     buffer of recently heard syllables.
+   - **Describing locations, not pointing**, supporting **both** the current place ("food here, in the forest") and
+     **remembered places** ("food in the forest to the north"). The current place comes first.
+     - **Needs:** a compass sense for a shared reference frame; senses for a place's biome, direction, distance and landmarks;
+       and a way for speakers to "think about" a remembered spot.
+   - **Analytics** detect words that track biome, direction or distance (for example "mi-to ≈ forest, north").
