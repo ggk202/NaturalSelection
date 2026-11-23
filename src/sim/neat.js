@@ -4,10 +4,12 @@ export const RAY_CAP = 13; // max rays any creature can have (eyes 0..6 -> 1..13
 export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
 export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias',
   'mapFoodAhead', 'mapFoodLeft', 'mapFoodRight', 'mapDangerAhead', 'mapDangerLeft', 'mapDangerRight', 'familiarity',
-  'kinNear'];
+  'kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
-export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce'];
+export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB'];
 export const N_OUT = OUTPUTS.length;
+// Founders wire only turn/throttle/attack/reproduce; the voice must be gained by mutation.
+const CORE_OUTPUTS = 4;
 export const INPUT_NAMES = [...Array.from({ length: RAY_CAP }, (_, r) => RAY_CHANNELS.map((c) => `ray${r}.${c}`)).flat(), ...SCALARS];
 
 const BASE_RATES = { addConn: 0.08, addNode: 0.03, toggle: 0.02, removeNode: 0.01 };
@@ -21,12 +23,15 @@ function ioNodes() {
 }
 
 // Input ids a creature with `rays` rays can actually use (ray slots are centre-out, so slots < rays).
-export const usableInputs = (rays) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i), ...SCALARS.map((_, i) => RAY_CAP * 3 + i)];
+// Social senses (kin, hearing) are silent for founders, so founder links skip them; mutation can add them.
+const SOCIAL = new Set(['kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin']);
+export const usableInputs = (rays) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i),
+  ...SCALARS.flatMap((name, i) => (SOCIAL.has(name) ? [] : [RAY_CAP * 3 + i]))];
 
 export function createBrain(rng, links = rng.int(4, 8), inputs = null) {
   const conns = [], seen = new Set();
   while (conns.length < links) {
-    const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
+    const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1), to = N_IN + rng.int(0, CORE_OUTPUTS - 1), key = `${from}>${to}`;
     if (seen.has(key)) continue;
     seen.add(key);
     conns.push({ from, to, w: rng.gauss(), on: true, p: 0 });
@@ -136,8 +141,10 @@ export const newState = (b) => new Float32Array(b.nodes.length);
 // Genome weights as a per-connection array; creatures learn on their own copy.
 export const initWeights = (b) => Float32Array.from(b.conns, (c) => c.w);
 
-export function runBrain(b, state, inputs, out, weights = null) {
-  const k = compile(b), { incoming, outIdx, scratch } = k, nodes = b.nodes, w = weights || k.weights;
+// pre (optional, per creature) receives the activations that fed this step; learn() needs it,
+// and keeping it on the creature lets saves continue identically.
+export function runBrain(b, state, inputs, out, weights = null, pre = null) {
+  const k = compile(b), { incoming, outIdx } = k, nodes = b.nodes, w = weights || k.weights, scratch = pre || k.scratch;
   for (let i = 0; i < N_IN; i++) state[i] = inputs[i]; // input nodes are always ids 0..N_IN-1 at indices 0..N_IN-1
   scratch.set(state);
   for (let j = N_IN; j < nodes.length; j++) {
@@ -153,9 +160,9 @@ export function runBrain(b, state, inputs, out, weights = null) {
 
 // Reward-modulated Hebbian update on a creature's working weights, after runBrain:
 // pre = activation that fed this step, post = new activation. Weights stay within ±4.
-export function learn(b, state, weights, reward) {
-  if (!b.lr || !reward) return;
-  const { plastic, scratch } = compile(b), rate = b.lr * reward;
+export function learn(b, pre, state, weights, reward) {
+  if (!b.lr || Math.abs(reward) < 1e-6) return;
+  const { plastic } = compile(b), rate = b.lr * reward, scratch = pre;
   for (let q = 0; q < plastic.length; q += 4) {
     const ci = plastic[q];
     weights[ci] = Math.max(-4, Math.min(4, weights[ci] + rate * plastic[q + 3] * scratch[plastic[q + 1]] * state[plastic[q + 2]]));

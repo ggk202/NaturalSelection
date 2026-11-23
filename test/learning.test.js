@@ -10,9 +10,9 @@ function oneLink(p, lr = 0.2, w = 0.5) {
   return b;
 }
 function trial(b, reward, steps = 10) {
-  const s = newState(b), wts = initWeights(b), i = new Float32Array(N_IN), o = new Float32Array(N_OUT);
+  const s = newState(b), pre = newState(b), wts = initWeights(b), i = new Float32Array(N_IN), o = new Float32Array(N_OUT);
   i[0] = 1;
-  for (let t = 0; t < steps; t++) { runBrain(b, s, i, o, wts); learn(b, s, wts, reward); }
+  for (let t = 0; t < steps; t++) { runBrain(b, s, i, o, wts, pre); learn(b, pre, s, wts, reward); }
   return wts[0];
 }
 

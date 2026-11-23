@@ -13,6 +13,8 @@ import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
+export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
+const CALL_COST = 0.05; // energy/s at full loudness (≈ base upkeep; 0.3 starved founders)
 const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
 export const DEFAULT_SETTINGS = {
@@ -46,6 +48,9 @@ export class World {
     this.checkpoints = [];
     this.nextLabelAt = LABEL_WINDOW;
     this.nextFadeAt = 5;
+    this.calls = []; // heard this step (emitted last step)
+    this.newCalls = [];
+    this.callCounts = [0, 0, 0, 0]; // per syllable since the last stats sample
     this.nextSpeciesAt = 0;
     this.nextId = 1;
     this.nextNodeId = 1000; // hidden neuron ids (shared by descendants)
@@ -75,7 +80,7 @@ export class World {
       id: this.nextId++, parentId: parent ? parent.id : null, generation: parent ? parent.generation + 1 : 0,
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
       energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0, kills: 0,
-      lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainUpkeep: brainCost(genome.brain), stillRun: 0, strikeWindow: 0,
+      lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainPre: newState(genome.brain), brainUpkeep: brainCost(genome.brain), stillRun: 0, strikeWindow: 0,
       weights: initWeights(genome.brain), energyMark: null, normalCost: 0,
       map: parent ? inheritMap(parent.map) : createMap(this.settings.worldSize, this.settings.mapCell),
       actionCounters: emptyCounters(), label: null, speciesId: null,
@@ -163,7 +168,26 @@ export class World {
     }
     out[S.familiarity] = recall(m, c.x, c.z, 'visits');
     out[S.kinNear] = c.nearestSeen ? relatedness(c.genome, c.nearestSeen.genome) : 0;
+    this.hear(c, out);
     return out;
+  }
+
+  // Hearing: loudness per syllable, direction and kinship of the loudest call (from last step's calls).
+  hear(c, out) {
+    for (let k = 0; k < 4; k++) out[S[`hear${k}`]] = 0;
+    out[S.hearSin] = 0; out[S.hearCos] = 0; out[S.hearKin] = 0;
+    const ears = 1 + 0.25 * c.genome.body.antennae;
+    let loudest = null, best = 0;
+    for (const k of this.calls) {
+      if (k.id === c.id) continue;
+      const dx = this.delta(c.x, k.x), dz = this.delta(c.z, k.z), d = Math.hypot(dx, dz), R = (10 + 30 * k.loud) * ears;
+      if (d >= R) continue;
+      const v = k.loud * (1 - d / R), slot = S[`hear${k.syll}`];
+      if (v > out[slot]) out[slot] = v;
+      if (v > best) { best = v; loudest = k; out[S.hearSin] = Math.sin(Math.atan2(dz, dx) - c.heading); out[S.hearCos] = Math.cos(Math.atan2(dz, dx) - c.heading); }
+    }
+    if (loudest) out[S.hearKin] = relatedness(c.genome, loudest.genome);
+    c.heard = loudest ? loudest.syll : -1;
   }
 
   rebuildGrids() {
@@ -217,12 +241,12 @@ export class World {
       // Credit goes to the activations that produced last step's actions (still in brainState).
       if (c.energyMark !== null) {
         const reward = Math.max(-1, Math.min(1, c.energy - c.energyMark + c.normalCost));
-        learn(c.genome.brain, c.brainState, c.weights, reward);
+        learn(c.genome.brain, c.brainPre, c.brainState, c.weights, reward);
         if (reward < -0.02) remember(c.map, c.x, c.z, 'danger', Math.min(1, -2 * reward));
       }
       c.energyMark = c.energy;
       remember(c.map, c.x, c.z, 'visits', 1 / 127);
-      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs, c.weights);
+      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs, c.weights, c.brainPre);
       const st = c.stats, throttle = o[1];
       c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
       const v = throttle * st.speed * this.terrainSpeed(c);
@@ -243,6 +267,8 @@ export class World {
       if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
       if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
+      if (o[4] > 0.5) this.call(c, (o[4] - 0.5) * 2, (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
+      else c.said = -1;
       if (o[3] > 0.5) this.reproduce(c);
       c.age += dt;
     }
@@ -255,6 +281,8 @@ export class World {
     }
     this.creatures = this.creatures.filter((c) => c.alive);
     this.food = this.food.filter((f) => !f.eaten);
+    this.calls = this.newCalls; // heard next step: keeps updates order-independent
+    this.newCalls = [];
     this.respawn();
     this.time += dt;
     this.periodic();
@@ -279,6 +307,24 @@ export class World {
       this.checkpoints = capCheckpoints(this.checkpoints);
     }
     if (this.stats.due(this.time)) this.stats.sample(this);
+  }
+
+  // Calling costs energy and can be overheard by anyone, predators included.
+  call(c, loud, syll) {
+    const cost = CALL_COST * loud * this.settings.dt;
+    c.energy -= cost;
+    c.normalCost += cost; // a chosen action, not a punishment
+    this.newCalls.push({ x: c.x, z: c.z, syll, loud, id: c.id, genome: c.genome });
+    this.callCounts[syll]++;
+    c.said = syll;
+    this.tracker.noteCall?.(c, syll, this.callContext(c));
+  }
+
+  // What was going on when a creature called: threat seen, food seen, kin nearby.
+  callContext(c) {
+    let food = false;
+    for (let r = 0; r < RAY_CAP; r++) if (inp[r * 3] > 0.3) { food = true; break; }
+    return { threat: !!c.threatNear, food, kin: inp[S.kinNear] > 0.6 };
   }
 
   // Speed multiplier from biome, water and slope; 0 when a slope is too steep to climb.
@@ -378,6 +424,8 @@ export class World {
     c.genome = mutate(c.genome, rate, this.rng, this.nodeIds);
     c.stats = deriveStats(c.genome.body);
     c.brainState = newState(c.genome.brain);
+    c.brainPre = newState(c.genome.brain);
+    c.energyMark = null; // a new maxEnergy clamp isn't damage
     c.brainUpkeep = brainCost(c.genome.brain);
     c.weights = initWeights(c.genome.brain); // memories (map) are kept: they aren't genetic
     c.energy = Math.min(c.energy, c.stats.maxEnergy);

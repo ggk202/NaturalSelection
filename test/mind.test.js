@@ -71,3 +71,20 @@ test('learned weights live on the creature and roundtrip', async () => {
   assert.ok(a.creatures.every((c) => c.weights.length === c.genome.brain.conns.length));
 });
 void newState; void initWeights;
+
+test('roundtrip continues identically with active learning', async () => {
+  const { serializeWorld, deserializeWorld } = await import('../src/sim/serialize.js');
+  const a = new World({ seed: 4 });
+  for (const c of a.creatures) { c.genome.brain.lr = 0.2; for (const k of c.genome.brain.conns) k.p = 1; } // before any compile
+  for (let i = 0; i < 200; i++) a.step();
+  const b = deserializeWorld(JSON.parse(JSON.stringify(serializeWorld(a))));
+  a.step(); b.step();
+  assert.equal(b.creatures.length, a.creatures.length);
+  a.creatures.forEach((c, i) => assert.deepEqual([...b.creatures[i].weights], [...c.weights], `creature ${c.id}`));
+});
+
+test('homebody needs real movement, not crawling', async () => {
+  const { labelOf, emptyCounters } = await import('../src/sim/behavior.js');
+  assert.notEqual(labelOf({ ...emptyCounters(), steps: 400, moved: 300, path: 9, maxDist: 6 }), 'homebody');
+  assert.equal(labelOf({ ...emptyCounters(), steps: 400, moved: 300, path: 40, maxDist: 8 }), 'homebody');
+});

@@ -8,7 +8,7 @@ export function labelOf(c) {
   if (r('attacked') > 0.05) return 'hunter';
   if (r('fled') > 0.02) return 'fleer';
   // Range-based labels: staying near one spot, or looping over the same ground.
-  if (r('moved') > 0.3 && c.maxDist <= 12) return 'homebody';
+  if (r('moved') > 0.3 && c.path >= 30 && c.maxDist <= 12) return 'homebody'; // real movement, kept local
   if (c.path > 60 && c.maxDist <= 30) return 'patroller';
   if (r('ate') > 0.01) return 'forager';
   if (r('moved') > 0.5) return 'wanderer';
