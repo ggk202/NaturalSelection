@@ -24,7 +24,7 @@ test('starving creature loses energy', () => {
 
 test('eats food', () => {
   const w = new World(quiet);
-  const c = w.spawn(genome(), 50, 50);
+  const c = w.spawn(genome({}, { reproduce: -10 }), 50, 50); // no breeding: it would halve energy
   w.food.push({ id: 1, x: 50, z: 50, energy: 3 });
   const e0 = c.energy; w.step();
   assert.equal(w.food.length, 0);
@@ -141,4 +141,15 @@ test('children inherit and mutate brains', () => {
   const kid = w.creatures[1];
   assert.ok(kid && kid.genome.brain !== p.genome.brain);
   assert.equal(kid.brainState.length, kid.genome.brain.nodes.length);
+});
+
+test('a creature with no reproduce wiring still breeds when well fed (default is willing)', () => {
+  const w = new World(quiet);
+  const c = w.spawn(genome({}, { throttle: -10 }), 50, 50);
+  c.energy = c.stats.maxEnergy; w.step();
+  assert.equal(w.creatures.length, 2);
+  const shy = new World(quiet);
+  const d = shy.spawn(genome({}, { throttle: -10, reproduce: -10 }), 50, 50);
+  d.energy = d.stats.maxEnergy; shy.step();
+  assert.equal(shy.creatures.length, 1, 'brains can still evolve to hold back');
 });

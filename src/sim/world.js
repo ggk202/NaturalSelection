@@ -271,7 +271,7 @@ export class World {
       if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c)); // base rates, sampled
       if (o[4] > 0.5) this.call(c, (o[4] - 0.5) * 2, (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
       else c.said = -1;
-      if (o[3] > 0.5) this.reproduce(c);
+      if (o[3] >= 0.5) this.reproduce(c); // unwired output (0.5) = willing; brains can evolve restraint
       c.age += dt;
     }
     for (const c of this.creatures) {
