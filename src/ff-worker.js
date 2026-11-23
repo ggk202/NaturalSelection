@@ -24,3 +24,7 @@ async function run(data) {
   }
   self.postMessage({ type: 'done', reason: result ? result.reason : 'stopped', detail: result ? result.detail : 'stopped by you', save: serializeWorld(world) });
 }
+
+// Handshake: some browsers deliver messages before a module worker (with top-level await) has registered
+// its handler, so the page waits for this before sending the world.
+self.postMessage({ type: 'ready' });

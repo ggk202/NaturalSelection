@@ -40,15 +40,18 @@ export const app = {
       worker = new Worker(new URL('./ff-worker.js', import.meta.url), { type: 'module' });
       app.paused = true;
       app.ff = worker;
+      const save = serializeWorld(app.world);
+      const startup = setTimeout(() => { if (app.ff === worker) worker.onmessage({ data: { type: 'error', message: 'worker did not start' } }); }, 30000);
       worker.onmessage = ({ data }) => {
+        if (data.type === 'ready') { clearTimeout(startup); return worker.postMessage({ save, cond }); }
         if (data.type === 'progress') return progress(data);
+        clearTimeout(startup);
         if (data.type === 'error') return finish(`Fast-forward failed (${data.message}); the world is unchanged.`);
         app.setWorld(deserializeWorld(data.save), runId, runName);
         finish(`⏩ Stopped: ${data.detail}`);
         app.save();
       };
       worker.onerror = (e) => finish(`Fast-forward failed (${e.message || 'worker could not start'}); the world is unchanged.`);
-      worker.postMessage({ save: serializeWorld(app.world), cond });
     } catch (e) { finish(`Fast-forward failed (${e.message}); the world is unchanged.`); }
   },
   // Stop asks the worker to hand the world back; if it doesn't answer quickly, abandon the run (world unchanged).
