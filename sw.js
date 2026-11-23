@@ -25,6 +25,7 @@ const PRECACHE = [
   './src/sim/memory.js',
   './src/sim/neat.js',
   './src/sim/noise.js',
+  './src/sim/physics.js',
   './src/sim/rng.js',
   './src/sim/serialize.js',
   './src/sim/species.js',
@@ -41,6 +42,8 @@ const PRECACHE = [
   './src/ui/inspector.js',
   './src/ui/runs.js',
   './vendor/OrbitControls.js',
+  './vendor/rapier/LICENSE',
+  './vendor/rapier/rapier.mjs',
   './vendor/three.module.min.js',
 ];
 
