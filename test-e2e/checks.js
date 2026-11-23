@@ -190,7 +190,8 @@ checks['checkpoint list shows entries'] = async ({ page, base, assert, errors })
   await boot(page, base);
   await page.evaluate(() => {
     const w = window.__world, c = w.creatures[0];
-    const cp = { id: 99, time: w.time, speciesId: 1, kind: 'body-shift', title: 'Species 1: legs 3 → 4', genome: c.genome, avgBody: { ...c.genome.body } };
+    // 'first' is a milestone, so it always toasts (other kinds are rate-limited).
+    const cp = { id: 99, time: w.time, speciesId: 1, kind: 'first', title: 'Species 1: legs 3 → 4', genome: c.genome, avgBody: { ...c.genome.body } };
     w.checkpoints.push(cp);
     w.emit({ type: 'checkpoint', checkpoint: cp });
   });
