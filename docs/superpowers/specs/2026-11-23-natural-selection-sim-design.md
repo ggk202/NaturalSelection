@@ -19,6 +19,8 @@ neural-network brains, and nothing about their behaviour is scripted.
     that favours certain body sizes. They are adjustable and can be switched on or off.
 - Experiment controls: world settings such as food rate, mutation rate, world size and threat toggles; sim speed;
   pause and step; reset with a seed.
+- **God-mode tools** (decided by the user): drop food, place or remove hazards, kill, clone, or mutate a chosen creature,
+  and seed predators.
 - Live graphs: population by diet, average values for key traits, and behaviour-label counts.
 - Tap a creature to see its genes, its brain, its stats and its lineage.
 - **Persistence** (browser storage, IndexedDB): settings, stats time-series, and **evolution
@@ -41,6 +43,7 @@ neural-network brains, and nothing about their behaviour is scripted.
 - Losing a long run because the tab was closed. Auto-save is required.
 
 ## Constraints
+- Target device: an older iPad Pro (decided by the user). Performance goal: a few hundred creatures at 30fps or more.
 - Runs on iPad Safari (WebGL2). There is no server, and it is hosted statically (GitHub Pages).
 - Storage is browser-only, so stored data has to stay compact. Store genomes and stats, not full world frames.
 
