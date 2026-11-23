@@ -18,7 +18,7 @@ function ioNodes() {
   return nodes;
 }
 
-export function createBrain(rng, links = rng.int(4, 8)) {
+export function createBrain(rng, links = rng.int(8, 16)) {
   const conns = [], seen = new Set();
   while (conns.length < links) {
     const from = rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
