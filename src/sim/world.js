@@ -12,6 +12,7 @@ import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
+const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
@@ -72,7 +73,7 @@ export class World {
       id: this.nextId++, parentId: parent ? parent.id : null, generation: parent ? parent.generation + 1 : 0,
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
       energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0, kills: 0,
-      lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainUpkeep: brainCost(genome.brain),
+      lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainUpkeep: brainCost(genome.brain), stillRun: 0, strikeWindow: 0,
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     if (genome.body.diet > 0.5) this.carnivoresSeen = true;
@@ -207,6 +208,10 @@ export class World {
       c.energy -= (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
       c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
+      // Ambush tracking: a long still spell opens a short strike window once the creature moves.
+      if (throttle < 0.1) c.stillRun++;
+      else { if (c.stillRun >= AMBUSH_WAIT) c.strikeWindow = AMBUSH_STRIKE; c.stillRun = 0; }
+      if (c.strikeWindow > 0) c.strikeWindow--;
       if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
       if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
@@ -290,6 +295,12 @@ export class World {
     // Lakes are a refuge from hunters that can't swim.
     if (c.stats.swim < 0.5 && this.terrain.isWater(target.x, target.z)) return;
     c.actionCounters.attacked++;
+    if (c.strikeWindow > 0) {
+      c.strikeWindow = 0;
+      c.actionCounters.ambushes++;
+      this.emit({ type: 'ambush', id: c.id });
+      for (const cp of this.tracker.noteAmbush(c, this.time)) { this.checkpoints.push(cp); this.emit({ type: 'checkpoint', checkpoint: cp }); }
+    }
     const dmg = Math.min(Math.max(target.energy, 0), c.stats.attack * this.settings.dt * 5);
     target.energy -= dmg;
     c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.8 * dmg * c.stats.digestMeat); // feeding while biting

@@ -33,6 +33,15 @@ export class SpeciesTracker {
   }
 
   // biomeOf(creature) -> biome key; optional so callers without terrain still work.
+  // Ambush milestones: once globally, once per species.
+  noteAmbush(c, time) {
+    const out = [], s = this.species.find((x) => x.id === c.speciesId);
+    const make = (title) => out.push({ id: this.nextCheckpointId++, time, speciesId: c.speciesId, kind: 'first', title, genome: cloneGenome(c.genome), avgBody: { ...(s ? s.avgBody : c.genome.body) } });
+    if (!this.firstAmbush) { this.firstAmbush = true; make('First ambush'); }
+    if (s && !s.ambushed) { s.ambushed = true; make(`Species ${s.id}: first ambush`); }
+    return out;
+  }
+
   update(creatures, time, biomeOf = null) {
     for (const s of this.species) { s.members = []; }
     for (const c of creatures) {
