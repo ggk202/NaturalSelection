@@ -16,7 +16,10 @@ Next, in order. Each project is designed, then built, one at a time:
    shells, spikes, fur, eyes) and jointed limbs. Worms, upright bipeds and gliders are
    reachable. Abilities are calculated from the whole body (speed, turning, sight height,
    armour, cold resistance, flight, upkeep, endurance with a stamina pool, dexterity).
-   No physics simulation.
+   **Revised (user, 2026-11-24):** creatures are **fully physical** (option A). Bodies are jointed rigid segments in
+   Rapier (`@dimforge/rapier3d-deterministic-compat`, keeping runs deterministic), and brains drive joint motors, so
+   locomotion is discovered, not designed. **Later:** a run-start choice between A (physical) and B (physical bodies, calculated
+   movement). Target device: Mac M1 Max (64 GB), aiming for 150–300 physical creatures; the iPad is secondary.
 4. **Tool use.** World objects that dexterous creatures can handle (dexterity → tools).
 5. **Proto-language.** A framework for evolved communication, building on the signals from project 2.
    Decisions (user, 2026-11-24):
