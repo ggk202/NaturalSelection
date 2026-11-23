@@ -1,0 +1,16 @@
+{
+  "name": "Natural Selection",
+  "short_name": "Evolve",
+  "description": "A 3D sandbox where creature bodies and brains evolve.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#a9c9e8",
+  "theme_color": "#12181e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

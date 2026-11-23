@@ -84,3 +84,5 @@ requestAnimationFrame(frame);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') app.save(); });
 
 export { view };
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('service worker:', e));

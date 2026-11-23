@@ -210,3 +210,42 @@ checks['storage warning shown'] = async ({ page, context, base, assert }) => {
   await page.waitForTimeout(500);
   assert.ok(await page.evaluate((t) => window.__world.time > t, t));
 };
+
+checks['works offline'] = async ({ page, context, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 10000 });
+  await context.setOffline(true);
+  await page.reload();
+  await page.waitForFunction(() => window.__world && window.__frames > 5 && window.__world.creatures.length > 0, null, { timeout: 15000 });
+  assert.ok(await page.$('canvas#view'));
+};
+
+checks['manifest and icons load'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  const m = await page.evaluate(async () => {
+    const href = document.querySelector('link[rel=manifest]').href;
+    const j = await (await fetch(href)).json();
+    const ok = await Promise.all(j.icons.map(async (i) => (await fetch(new URL(i.src, href))).ok));
+    return { display: j.display, ok };
+  });
+  assert.equal(m.display, 'standalone');
+  assert.ok(m.ok.length >= 2 && m.ok.every(Boolean));
+};
+
+checks['perf 300 creatures (sim time asserted, frame time logged)'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  const r = await page.evaluate(async () => {
+    const { World } = await import('/src/sim/world.js');
+    const w = new World({ initialCreatures: 300, maxCreatures: 300, respawnMin: 0 });
+    const t0 = performance.now();
+    for (let i = 0; i < 100; i++) w.step();
+    const step = (performance.now() - t0) / 100;
+    window.__app.setWorld(new World({ initialCreatures: 300, maxCreatures: 300 }));
+    const f0 = window.__frames, s = performance.now();
+    await new Promise((res) => setTimeout(res, 3000));
+    return { step, frameMs: (performance.now() - s) / (window.__frames - f0) };
+  });
+  console.log(`  # sim step ${r.step.toFixed(2)} ms, frame ${r.frameMs.toFixed(1)} ms (software GL — check fps on iPad)`);
+  assert.ok(r.step < 8, `sim step ${r.step}`);
+};
