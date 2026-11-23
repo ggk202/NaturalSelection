@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world.js';
-import { INPUTS } from '../src/sim/brain.js';
+import { N_IN } from '../src/sim/neat.js';
+import { inputIndex } from './helpers.js';
 import { genome, quiet } from './helpers.js';
 
 const OFF = { seasons: false, temperature: false, hazards: false };
@@ -65,8 +66,8 @@ test('senses temperature and hazards', () => {
   const w = new World({ ...quiet, env: { ...OFF, temperature: true, hazards: true, hazardCount: 0 } });
   w.addHazard(53, 1, 1);
   const c = w.spawn(genome({ eyes: 4 }), 50, 1);
-  const inp = new Float32Array(INPUTS.length);
+  const inp = new Float32Array(N_IN);
   w.rebuildGrids(); w.sense(c, inp);
-  assert.ok(inp[9] < -0.5, `temp ${inp[9]}`);
-  assert.ok(inp[10] < 1, `hazard ${inp[10]}`);
+  assert.ok(inp[inputIndex('temperature')] < -0.5, `temp ${inp[inputIndex('temperature')]}`);
+  assert.ok(inp[inputIndex('hazardDist')] < 1, `hazard ${inp[inputIndex('hazardDist')]}`);
 });

@@ -1,4 +1,4 @@
-import { BRAIN_WEIGHT_COUNT } from './brain.js';
+import { createBrain, mutateBrain, cloneBrain, brainDistance } from './neat.js';
 
 export const GENES = [
   { key: 'size', min: 0.5, max: 2 },
@@ -14,6 +14,7 @@ export const GENES = [
   { key: 'reproThreshold', min: 0.5, max: 0.95 },
 ];
 
+const localIds = () => { let n = 100000; return () => n++; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 export function randomGenome(rng) {
@@ -21,30 +22,26 @@ export function randomGenome(rng) {
   for (const { key, min, max, int } of GENES) body[key] = int ? rng.int(min, max) : rng.range(min, max);
   // Founders start as herbivores; carnivory must evolve (or be seeded).
   body.diet = rng.range(0, 0.2);
-  const brain = new Float32Array(BRAIN_WEIGHT_COUNT);
-  for (let i = 0; i < brain.length; i++) brain[i] = rng.gauss() * 0.8;
-  return { body, brain };
+  return { body, brain: createBrain(rng) };
 }
 
 export function cloneGenome(g) {
-  return { body: { ...g.body }, brain: Float32Array.from(g.brain) };
+  return { body: { ...g.body }, brain: cloneBrain(g.brain) };
 }
 
-export function mutate(g, rate, rng) {
-  const out = cloneGenome(g);
+// nextNodeId supplies hidden-neuron ids; the world passes its own counter (tests may omit it).
+export function mutate(g, rate, rng, nextNodeId = localIds()) {
+  const out = { body: { ...g.body }, brain: mutateBrain(g.brain, rate, rng, nextNodeId) };
   for (const { key, min, max, int } of GENES) {
     if (rng.next() >= rate) continue;
     const v = int ? out.body[key] + (rng.next() < 0.5 ? -1 : 1) : out.body[key] + rng.gauss() * 0.1 * (max - min);
     out.body[key] = clamp(v, min, max);
   }
-  for (let i = 0; i < out.brain.length; i++) if (rng.next() < rate) out.brain[i] += rng.gauss() * 0.3;
   return out;
 }
 
 export function genomeDistance(a, b) {
   let d = 0;
   for (const { key, min, max } of GENES) if (key !== 'hue') d += Math.abs(a.body[key] - b.body[key]) / (max - min);
-  let w = 0;
-  for (let i = 0; i < a.brain.length; i++) w += Math.abs(a.brain[i] - b.brain[i]);
-  return d / (GENES.length - 1) + 0.1 * (w / a.brain.length);
+  return d / (GENES.length - 1) + 0.15 * brainDistance(a.brain, b.brain);
 }

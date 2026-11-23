@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world.js';
-import { INPUTS } from '../src/sim/brain.js';
+import { N_IN, RAY_CAP } from '../src/sim/neat.js';
+const anyRay = (inp, k, f = (v) => v) => { let m = 0; for (let r = 0; r < RAY_CAP; r++) { const v = f(inp[r * 3 + k]); if (v > m) m = v; } return m; };
 import { genome, quiet } from './helpers.js';
 
 const stop = { throttle: -10 };
@@ -36,10 +37,10 @@ test('prey senses threat, predator senses prey', () => {
   const prey = w.spawn(genome({ size: 0.5, diet: 0, eyes: 6 }), 50, 50);
   const pred = w.spawn(genome({ diet: 1, mouth: 1.5, size: 1.5, eyes: 6 }), 53, 50);
   prey.heading = 0; pred.heading = Math.PI;
-  const inp = new Float32Array(INPUTS.length);
+  const inp = new Float32Array(N_IN);
   w.rebuildGrids();
-  w.sense(prey, inp); assert.ok(inp[4] < 1, 'threatDist');
-  w.sense(pred, inp); assert.ok(inp[2] < 1, 'preyDist');
+  w.sense(prey, inp); assert.ok(anyRay(inp, 1, (v) => -v) > 0.3, 'threat seen');
+  w.sense(pred, inp); assert.ok(anyRay(inp, 1) > 0.3, 'prey seen');
 });
 
 test('seedPredators works when extinct', () => {

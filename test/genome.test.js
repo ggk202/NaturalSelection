@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRng } from '../src/sim/rng.js';
 import { GENES, randomGenome, mutate, cloneGenome, genomeDistance } from '../src/sim/genome.js';
-import { BRAIN_WEIGHT_COUNT } from '../src/sim/brain.js';
+
 
 test('random genome in range', () => {
   const r = createRng(1);
@@ -13,7 +13,7 @@ test('random genome in range', () => {
       assert.ok(v >= min && v <= max, `${key}=${v}`);
       if (int) assert.ok(Number.isInteger(v), key);
     }
-    assert.equal(g.brain.length, BRAIN_WEIGHT_COUNT);
+    assert.ok(g.brain.nodes.length > 0 && g.brain.conns.length > 0);
   }
 });
 
@@ -21,14 +21,14 @@ test('mutate rate 0 is identity', () => {
   const r = createRng(2), g = randomGenome(r);
   const m = mutate(g, 0, r);
   assert.deepEqual(m.body, g.body);
-  assert.deepEqual([...m.brain], [...g.brain]);
+  assert.deepEqual(m.brain.conns.map((c) => c.w), g.brain.conns.map((c) => c.w));
 });
 
 test('mutate does not alter input', () => {
   const r = createRng(3), g = randomGenome(r), copy = cloneGenome(g);
   mutate(g, 1, r);
   assert.deepEqual(g.body, copy.body);
-  assert.deepEqual([...g.brain], [...copy.brain]);
+  assert.equal(JSON.stringify(g.brain), JSON.stringify(copy.brain));
 });
 
 test('distance zero to self, positive to mutant', () => {

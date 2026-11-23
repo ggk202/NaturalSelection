@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world.js';
-import { INPUTS } from '../src/sim/brain.js';
+import { N_IN, RAY_CAP } from '../src/sim/neat.js';
+const anyRay = (inp, k, f = (v) => v) => { let m = 0; for (let r = 0; r < RAY_CAP; r++) { const v = f(inp[r * 3 + k]); if (v > m) m = v; } return m; };
+import { SCALARS } from '../src/sim/neat.js';
 import { BIOMES, BIOME } from '../src/sim/biomes.js';
 import { genome } from './helpers.js';
 import { deriveStats } from '../src/sim/body.js';
 
 const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false } };
-const IN = Object.fromEntries(INPUTS.map((k, i) => [k, i]));
 
 // Center of a cell whose 7x7 neighbourhood is entirely the given biome.
 function interior(w, key, skip = 0) {
@@ -23,8 +24,7 @@ function interior(w, key, skip = 0) {
 }
 
 test('new inputs exist', () => {
-  for (const k of ['biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'tempGradient']) assert.ok(k in IN, k);
-  assert.equal(INPUTS.length, 18);
+  for (const k of ['biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'tempGradient']) assert.ok(SCALARS.includes(k), k);
 });
 
 test('lake slows and drains non-swimmers; good swimmers cross cheaper', () => {
@@ -68,9 +68,9 @@ test('forest shortens sight', () => {
     const w = new World(T), p = interior(w, key);
     const c = w.spawn(genome({ eyes: 4, eyeSize: 1 }), p.x, p.z); c.heading = 0;
     w.food.push({ id: 999, x: p.x + 0.8 * c.stats.senseRange, z: p.z, energy: 3, type: 'plant' });
-    const inp = new Float32Array(INPUTS.length);
+    const inp = new Float32Array(N_IN);
     w.rebuildGrids(); w.sense(c, inp);
-    assert.equal(inp[IN.foodDist] < 1, seen, key);
+    assert.equal(anyRay(inp, 0) > 0, seen, key);
   }
 });
 
@@ -78,13 +78,14 @@ test('camouflaged prey unseen at distance in forest', () => {
   const w = new World(T), p = interior(w, 'forest');
   const pred = w.spawn(genome({ diet: 1, mouth: 1.5, size: 1.5, eyes: 6, eyeSize: 1.5 }), p.x, p.z); pred.heading = 0;
   const range = pred.stats.senseRange * BIOMES[BIOME.forest].sightMul;
-  const prey = w.spawn(genome({ size: 0.5, diet: 0 }), p.x + 0.8 * range, p.z);
-  const inp = new Float32Array(INPUTS.length);
+  const prey = w.spawn(genome({ size: 0.5, diet: 0 }), p.x + 5, p.z); // within forest reach (~8) unless camouflaged
+  void range;
+  const inp = new Float32Array(N_IN);
   w.rebuildGrids(); w.sense(pred, inp);
-  assert.equal(inp[IN.preyDist], 1, 'small prey hidden');
+  assert.equal(anyRay(inp, 1), 0, 'small prey hidden');
   prey.genome = genome({ size: 1.2, diet: 0 }); prey.stats = deriveStats(prey.genome.body);
   w.sense(pred, inp);
-  assert.ok(inp[IN.preyDist] < 1, 'big prey visible');
+  assert.ok(anyRay(inp, 1) > 0, 'big prey visible');
 });
 
 test('food spawns more in fertile biomes, with biome food types', () => {

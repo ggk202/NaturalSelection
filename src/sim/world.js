@@ -1,7 +1,8 @@
 import { createRng } from './rng.js';
 import { randomGenome, mutate, cloneGenome } from './genome.js';
 import { deriveStats } from './body.js';
-import { think, INPUTS, OUTPUTS } from './brain.js';
+import { runBrain, newState, brainCost, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
+import { castRays } from './vision.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
 import { labelOf, emptyCounters } from './behavior.js';
@@ -14,14 +15,16 @@ const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
-  foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
+  maxRays: 9, foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
 
 const MAX_EVENTS = 1000;
 const TAU = Math.PI * 2;
-const inp = new Float32Array(INPUTS.length);
+const inp = new Float32Array(N_IN);
+export const SCALAR_AT = Object.fromEntries(SCALARS.map((k, i) => [k, RAY_CAP * 3 + i]));
+const S = SCALAR_AT;
 
 export class World {
   constructor(settings = {}) {
@@ -42,6 +45,8 @@ export class World {
     this.nextLabelAt = LABEL_WINDOW;
     this.nextSpeciesAt = 0;
     this.nextId = 1;
+    this.nextNodeId = 1000; // hidden neuron ids (shared by descendants)
+    this.nodeIds = () => this.nextNodeId++;
     this.elite = []; // top parents by child count: { genome, children }
     this.eliteCarn = []; // top carnivores by kills + children
     this.carnivoresSeen = false;
@@ -67,7 +72,7 @@ export class World {
       id: this.nextId++, parentId: parent ? parent.id : null, generation: parent ? parent.generation + 1 : 0,
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
       energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0, kills: 0,
-      lastOutputs: new Float32Array(OUTPUTS.length),
+      lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainUpkeep: brainCost(genome.brain),
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     if (genome.body.diet > 0.5) this.carnivoresSeen = true;
@@ -122,49 +127,29 @@ export class World {
   wrap(v) { const W = this.settings.worldSize; return ((v % W) + W) % W; }
   delta(a, b) { const W = this.settings.worldSize; let d = b - a; if (d > W / 2) d -= W; else if (d < -W / 2) d += W; return d; }
 
-  // Nearest object within range and field of view; returns [dist/range, angle/π] or [1, 0].
-  nearest(c, grid, filter, out, i) {
-    const range = c.senseNow, halfFov = c.stats.fov / 2, isCreature = grid === this.creatureGrid;
-    let best = range * range, bx = 0, bz = 0, found = false;
-    grid.query(c.x, c.z, range, (o) => {
-      if (o === c || (filter && !filter(o))) return;
-      const dx = this.delta(c.x, o.x), dz = this.delta(c.z, o.z);
-      let d2 = dx * dx + dz * dz;
-      // Camouflage: in forest, small creatures appear farther away than they are.
-      if (isCreature && this.terrain.biomeAt(o.x, o.z) === BIOME.forest) d2 /= (1 - 0.6 * o.stats.camo) ** 2;
-      if (d2 >= best) return;
-      if (halfFov < Math.PI && Math.abs(angleDiff(Math.atan2(dz, dx), c.heading)) > halfFov) return;
-      best = d2; bx = dx; bz = dz; found = true;
-    });
-    if (!found) { out[i] = 1; out[i + 1] = 0; return null; }
-    out[i] = Math.sqrt(best) / range;
-    out[i + 1] = angleDiff(Math.atan2(bz, bx), c.heading) / Math.PI;
-    return true;
-  }
+  // Number of vision rays: from eyes, capped by the maxRays setting.
+  raysOf(c) { return Math.max(1, Math.min(this.settings.maxRays, RAY_CAP, 1 + 2 * c.genome.body.eyes)); }
 
+  // Fills the brain input vector: ray channels, then scalars (see neat.js INPUT_NAMES).
   sense(c, out) {
-    const t = this.terrain, biome = this.biomeOf(c);
-    c.senseNow = c.stats.senseRange * biome.sightMul;
-    this.nearest(c, this.foodGrid, null, out, 0);
-    const b = c.genome.body, st = c.stats;
-    this.nearest(c, this.creatureGrid, (o) => o.stats.defense < st.attack, out, 2);
-    c.threatNear = this.nearest(c, this.creatureGrid, (o) => o.stats.attack > st.defense, out, 4);
-    this.nearest(c, this.creatureGrid, (o) => Math.abs(o.genome.body.diet - b.diet) < 0.25 && Math.abs(o.genome.body.size - b.size) < 0.4, out, 6);
-    out[8] = c.energy / c.stats.maxEnergy;
-    out[9] = this.temperatureAt(c.x, c.z);
-    out[10] = 1;
+    const t = this.terrain, biome = this.biomeOf(c), st = c.stats;
+    c.threatNear = castRays(this, c, this.raysOf(c), out, 0);
+    const hx = Math.cos(c.heading), hz = Math.sin(c.heading);
+    out[S.energy] = c.energy / st.maxEnergy;
+    out[S.temperature] = this.temperatureAt(c.x, c.z);
+    out[S.tempGradient] = Math.max(-1, Math.min(1, 5 * (t.tempAt(c.x + 2 * hx, c.z + 2 * hz) - t.tempAt(c.x, c.z))));
+    out[S.biomeFood] = biome.fertility / 2;
+    out[S.biomeDanger] = Math.min(1, this.biomeDrain(c, biome) / 0.25);
+    out[S.cover] = Math.max(0, 1 - biome.sightMul);
+    out[S.slopeAhead] = Math.max(-1, Math.min(1, t.slopeAlong(c.x, c.z, c.heading)));
+    out[S.waterAhead] = t.isWater(c.x + 2 * hx, c.z + 2 * hz) ? 1 : 0;
+    let hz2 = 1;
     for (const h of this.env.hazards) {
       const d = Math.max(0, Math.hypot(this.delta(c.x, h.x), this.delta(c.z, h.z)) - h.r) / st.senseRange;
-      if (d < out[10]) out[10] = d;
+      if (d < hz2) hz2 = d;
     }
-    out[11] = 1;
-    const hx = Math.cos(c.heading), hz = Math.sin(c.heading);
-    out[12] = biome.fertility / 2;
-    out[13] = Math.min(1, this.biomeDrain(c, biome) / 0.25);
-    out[14] = Math.max(0, 1 - biome.sightMul);
-    out[15] = Math.max(-1, Math.min(1, t.slopeAlong(c.x, c.z, c.heading)));
-    out[16] = t.isWater(c.x + 2 * hx, c.z + 2 * hz) ? 1 : 0;
-    out[17] = Math.max(-1, Math.min(1, 5 * (t.tempAt(c.x + 2 * hx, c.z + 2 * hz) - t.tempAt(c.x, c.z))));
+    out[S.hazardDist] = hz2;
+    out[S.bias] = 1;
     return out;
   }
 
@@ -198,7 +183,7 @@ export class World {
     const s = this.settings;
     if (this.creatures.length >= s.maxCreatures) return;
     if (c.energy <= c.genome.body.reproThreshold * c.stats.maxEnergy) return;
-    const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
+    const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng, this.nodeIds), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
     c.energy /= 2;
     c.children++;
     child.energy = Math.min(child.stats.maxEnergy, c.energy);
@@ -213,16 +198,16 @@ export class World {
     for (let i = 0; i < n; i++) {
       const c = this.creatures[i];
       if (!c.alive) continue;
-      const o = think(c.genome.brain, this.sense(c, inp), c.lastOutputs);
+      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs);
       const st = c.stats, throttle = o[1];
       c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
       const v = throttle * st.speed * this.terrainSpeed(c);
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
-      c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
+      c.energy -= (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
       c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
-      if (c.threatNear && throttle > 0.3 && Math.abs(inp[5]) > 0.5) c.actionCounters.fled++;
+      if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
       if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
       if (o[3] > 0.5) this.reproduce(c);
@@ -273,10 +258,10 @@ export class World {
 
   // Extra energy/s from temperature, biome and hazards; reuses the inputs just sensed.
   envCost(c, sensed) {
-    const t = sensed[9], st = c.stats, cfg = this.settings.env;
+    const t = sensed[S.temperature], st = c.stats, cfg = this.settings.env;
     let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist));
     cost += this.biomeDrain(c, this.biomeOf(c));
-    if (sensed[10] === 0) cost += cfg.hazardDamage;
+    if (sensed[S.hazardDist] === 0) cost += cfg.hazardDamage;
     return cost;
   }
 
@@ -347,8 +332,10 @@ export class World {
   mutateCreature(id, rate = 0.5) {
     const c = this.find(id);
     if (!c) return;
-    c.genome = mutate(c.genome, rate, this.rng);
+    c.genome = mutate(c.genome, rate, this.rng, this.nodeIds);
     c.stats = deriveStats(c.genome.body);
+    c.brainState = newState(c.genome.brain);
+    c.brainUpkeep = brainCost(c.genome.brain);
     c.energy = Math.min(c.energy, c.stats.maxEnergy);
     this.emit({ type: 'god', action: 'mutate', id });
   }
@@ -382,7 +369,7 @@ export class World {
       for (const c of this.creatures) if (c.genome.body.diet > 0.5) carn++;
       for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
         const g = this.eliteCarn.length
-          ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng)
+          ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
           : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng));
         g.body.diet = Math.max(g.body.diet, 0.55);
         const p = this.randomLandPoint();
@@ -391,7 +378,7 @@ export class World {
     }
     while (this.creatures.length < s.respawnMin) {
       const g = this.elite.length && this.rng.next() < 0.8
-        ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng)
+        ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
         : randomGenome(this.rng);
       const p = this.randomLandPoint();
       this.spawn(g, p.x, p.z);

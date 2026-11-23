@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world.js';
-import { INPUTS } from '../src/sim/brain.js';
+import { N_IN, RAY_CAP } from '../src/sim/neat.js';
+const anyRay = (inp, k, f = (v) => v) => { let m = 0; for (let r = 0; r < RAY_CAP; r++) { const v = f(inp[r * 3 + k]); if (v > m) m = v; } return m; };
 import { genome, quiet } from './helpers.js';
 
 const sumX = (w) => w.creatures.reduce((s, c) => s + c.x, 0);
@@ -69,13 +70,13 @@ test('extinction is stable', () => {
 test('senses respect fov', () => {
   const w = new World(quiet);
   const c = w.spawn(genome({ eyes: 0, antennae: 0 }), 50, 50); c.heading = 0;
-  const inp = new Float32Array(INPUTS.length);
+  const inp = new Float32Array(N_IN);
   w.food.push({ id: 1, x: 48, z: 50, energy: 3 }); // behind (heading 0 = +x)
   w.rebuildGrids(); w.sense(c, inp);
-  assert.equal(inp[0], 1);
+  assert.equal(anyRay(inp, 0), 0);
   w.food[0].x = 52;
   w.rebuildGrids(); w.sense(c, inp);
-  assert.ok(inp[0] < 1 && Math.abs(inp[1]) < 0.01);
+  assert.ok(inp[0] > 0, 'single centre ray sees food ahead');
 });
 
 test('wraps around world edges', () => {
@@ -118,4 +119,26 @@ test('default settings are complete and finite', async () => {
   for (const k of ['seed', 'worldSize', 'waterLevel', 'initialCreatures', 'maxCreatures', 'foodRate', 'maxFood', 'foodEnergy', 'mutationRate', 'dt', 'predatorMin', 'respawnMin']) {
     assert.ok(Number.isFinite(DEFAULT_SETTINGS[k]), k);
   }
+});
+
+test('brain upkeep charged: bigger brains starve faster', async () => {
+  const { mutateBrain } = await import('../src/sim/neat.js');
+  const { createRng } = await import('../src/sim/rng.js');
+  const w = new World(quiet);
+  const small = w.spawn(genome({}, { throttle: -10 }), 50, 50);
+  let big = genome({}, { throttle: -10 }), r = createRng(3), id = 5000;
+  for (let i = 0; i < 40; i++) big = { ...big, brain: mutateBrain(big.brain, 0.08, r, () => id++, { addNode: 1, addConn: 1 }) };
+  const b = w.spawn(big, 60, 60);
+  const s0 = small.energy, b0 = b.energy;
+  for (let i = 0; i < 20; i++) w.step();
+  assert.ok(b0 - b.energy > s0 - small.energy, 'big brain costs more');
+});
+
+test('children inherit and mutate brains', () => {
+  const w = new World({ ...quiet, mutationRate: 0.5 });
+  const p = w.spawn(genome({}, { reproduce: 10, throttle: -10 }), 50, 50);
+  p.energy = p.stats.maxEnergy; w.step();
+  const kid = w.creatures[1];
+  assert.ok(kid && kid.genome.brain !== p.genome.brain);
+  assert.equal(kid.brainState.length, kid.genome.brain.nodes.length);
 });
