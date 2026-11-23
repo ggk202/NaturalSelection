@@ -41,11 +41,16 @@ export const app = {
       app.paused = true;
       app.ff = worker;
       const save = serializeWorld(app.world);
-      const startup = setTimeout(() => { if (app.ff === worker) worker.onmessage({ data: { type: 'error', message: 'worker did not start' } }); }, 30000);
+      // Heartbeat: the worker reports every stage and ~4×/s while running; 20 s of silence ends the run.
+      let stage = 'loading worker…', beat = null;
+      const alive = () => { clearTimeout(beat); beat = setTimeout(() => { if (app.ff === worker) worker.onmessage({ data: { type: 'error', message: `stalled while ${stage}` } }); }, 20000); };
+      alive();
+      progress({ stage });
       worker.onmessage = ({ data }) => {
-        if (data.type === 'ready') { clearTimeout(startup); return worker.postMessage({ save, cond }); }
-        if (data.type === 'progress') return progress(data);
-        clearTimeout(startup);
+        if (data.type === 'ready') { stage = 'sending world…'; alive(); progress({ stage }); return worker.postMessage({ save, cond }); }
+        if (data.type === 'stage') { stage = data.text; alive(); return progress({ stage }); }
+        if (data.type === 'progress') { stage = 'running'; alive(); return progress(data); }
+        clearTimeout(beat);
         if (data.type === 'error') return finish(`Fast-forward failed (${data.message}); the world is unchanged.`);
         app.setWorld(deserializeWorld(data.save), runId, runName);
         finish(`⏩ Stopped: ${data.detail}`);

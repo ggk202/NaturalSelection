@@ -9,7 +9,9 @@ self.onmessage = async ({ data }) => {
 };
 
 async function run(data) {
+  self.postMessage({ type: 'stage', text: 'unpacking world…' });
   const world = deserializeWorld(data.save), cond = { realMinutes: 10, ...data.cond };
+  self.postMessage({ type: 'stage', text: 'running first steps…' });
   const startReal = performance.now(), startTime = world.time, log = [];
   let result = null, lastPost = 0;
   while (!result && !stopped) {
@@ -24,6 +26,8 @@ async function run(data) {
   }
   self.postMessage({ type: 'done', reason: result ? result.reason : 'stopped', detail: result ? result.detail : 'stopped by you', save: serializeWorld(world) });
 }
+
+self.addEventListener('unhandledrejection', (e) => self.postMessage({ type: 'error', message: String(e.reason && e.reason.message || e.reason) }));
 
 // Handshake: some browsers deliver messages before a module worker (with top-level await) has registered
 // its handler, so the page waits for this before sending the world.

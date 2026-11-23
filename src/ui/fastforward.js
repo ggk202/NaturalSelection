@@ -10,7 +10,7 @@ const select = (name, options) => h('select', { name }, options.map(([v, t]) => 
 export function mountFastForward(root, app) {
   const sheet = h('div', { id: 'ff', class: 'panel sheet', hidden: true },
     h('div', { class: 'sheet-head' }, h('strong', {}, 'Fast-forward'), h('button', { onclick: () => (sheet.hidden = true) }, 'Close')),
-    h('small', {}, 'Runs without drawing until the first condition is met.'),
+    h('small', {}, 'Runs without drawing until the first condition is met. (fast-forward v4)'),
     num('simMinutes', 'Stop after simulated minutes', 30),
     num('popBelow', 'Stop if population falls below'),
     num('popAbove', 'Stop if population rises above'),
@@ -38,7 +38,7 @@ export function mountFastForward(root, app) {
     progress.hidden = false;
     status.textContent = 'starting…';
     app.fastForward(readCond(), {
-      progress: (p) => { status.textContent = `sim ${Math.floor(p.time / 60)}:${String(Math.floor(p.time % 60)).padStart(2, '0')} · ${p.pop} alive · ×${Math.round(p.speed)}`; recent.textContent = p.log.join(' · '); },
+      progress: (p) => { if (p.stage) { status.textContent = p.stage; return; } status.textContent = `sim ${Math.floor(p.time / 60)}:${String(Math.floor(p.time % 60)).padStart(2, '0')} · ${p.pop} alive · ×${Math.round(p.speed)}`; recent.textContent = p.log.join(' · '); },
       done: () => { progress.hidden = true; },
     });
   }
