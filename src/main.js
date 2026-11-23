@@ -1,8 +1,9 @@
 import { World } from './sim/world.js';
-import { serializeWorld } from './sim/serialize.js';
+import { serializeWorld, deserializeWorld } from './sim/serialize.js';
 import { createScene } from './render/scene.js';
 import { createStepper } from './loop.js';
-import { saveRun, loadSettings } from './storage.js';
+import { saveRun, loadSettings, listRuns, loadRun } from './storage.js';
+import { mountRuns } from './ui/runs.js';
 import { mountControls } from './ui/controls.js';
 import { mountCharts } from './ui/charts.js';
 import { mountInspector } from './ui/inspector.js';
@@ -26,12 +27,25 @@ export const app = {
     if (!r.ok && app.storageOk) { app.storageOk = false; app.onStorageError?.(r.error); }
     return r;
   },
+  // Returns an error message, or null on success. A failed load leaves the save untouched.
+  async loadRun(id, name) {
+    const r = await loadRun(id);
+    if (!r.ok) return r.error;
+    if (!r.value) return 'run not found';
+    try {
+      app.setWorld(deserializeWorld(r.value), id, name);
+      return null;
+    } catch (e) { return e.message; }
+  },
 };
 window.__app = app;
 window.__view = view;
 
 const saved = await loadSettings();
-app.setWorld(new World(saved.ok && saved.value ? saved.value : {}));
+const runs = await listRuns();
+let bootError = null;
+if (runs.ok && runs.value.length) bootError = await app.loadRun(runs.value[0].id, runs.value[0].name);
+if (!app.world) app.setWorld(new World(saved.ok && saved.value ? saved.value : {}));
 
 const ui = document.getElementById('ui');
 app.ui = {};
@@ -39,6 +53,9 @@ app.ui.charts = mountCharts(ui, app);
 app.ui.controls = mountControls(ui, app);
 app.ui.inspector = mountInspector(ui, app);
 app.ui.godmode = mountGodMode(ui, app, view, canvas);
+app.ui.runs = mountRuns(ui, app);
+if (bootError) app.ui.runs.toast(`Couldn’t resume last run (${bootError}); started a new one.`);
+if (!runs.ok) app.onStorageError(runs.error);
 
 const stepper = createStepper();
 let last = performance.now(), lastSave = last, frameMsAvg = 16;

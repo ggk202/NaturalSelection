@@ -153,3 +153,60 @@ checks['seed predators button'] = async ({ page, base, assert }) => {
   await page.click('#btn-predators');
   assert.equal(await page.evaluate(() => window.__world.creatures.filter((c) => c.genome.body.diet >= 0.9).length), n0 + 5);
 };
+
+checks['resume after reload'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => { window.__app.speed = 8; });
+  await page.waitForFunction(() => window.__world.time > 5);
+  await page.evaluate(() => { window.__app.paused = true; });
+  await page.click('#btn-runs');
+  await page.click('#btn-save-now');
+  await page.waitForSelector('#runs li');
+  const { runId, time } = await page.evaluate(() => ({ runId: window.__app.runId, time: window.__world.time }));
+  await page.reload();
+  await page.waitForFunction(() => window.__world && window.__frames > 5);
+  assert.equal(await page.evaluate(() => window.__app.runId), runId);
+  assert.ok(await page.evaluate((t) => window.__world.time >= t - 1, time));
+};
+
+checks['new run, rename and delete'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  page.on('dialog', (d) => d.accept(d.type() === 'prompt' ? 'Renamed run' : undefined));
+  await page.click('#btn-runs');
+  await page.click('#btn-save-now');
+  const first = await page.evaluate(() => window.__app.runId);
+  await page.click('#btn-new-run');
+  assert.notEqual(await page.evaluate(() => window.__app.runId), first);
+  await page.click('#btn-save-now');
+  await page.waitForFunction(() => document.querySelectorAll('#runs li').length === 2);
+  await page.click(`#runs li[data-id="${first}"] [data-act="rename"]`);
+  await page.waitForFunction((id) => document.querySelector(`#runs li[data-id="${id}"]`).textContent.includes('Renamed run'), first);
+  await page.click(`#runs li[data-id="${first}"] [data-act="delete"]`);
+  await page.waitForFunction(() => document.querySelectorAll('#runs li').length === 1);
+};
+
+checks['checkpoint list shows entries'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  await page.evaluate(() => {
+    const w = window.__world, c = w.creatures[0];
+    const cp = { id: 99, time: w.time, speciesId: 1, kind: 'body-shift', title: 'Species 1: legs 3 → 4', genome: c.genome, avgBody: { ...c.genome.body } };
+    w.checkpoints.push(cp);
+    w.emit({ type: 'checkpoint', checkpoint: cp });
+  });
+  await page.waitForSelector('#toast:not([hidden])', { timeout: 2000 });
+  await page.click('#btn-timeline');
+  await page.click('#checkpoints li >> text=legs 3 → 4');
+  await page.waitForSelector('#checkpoints canvas.preview', { state: 'visible' });
+  await page.waitForTimeout(300);
+  assert.deepEqual(errors, []);
+};
+
+checks['storage warning shown'] = async ({ page, context, base, assert }) => {
+  await context.addInitScript(() => { indexedDB.open = () => { throw new Error('blocked'); }; });
+  await boot(page, base);
+  await page.evaluate(() => window.__app.save());
+  await page.waitForSelector('#storage-warning', { state: 'visible', timeout: 3000 });
+  const t = await page.evaluate(() => window.__world.time);
+  await page.waitForTimeout(500);
+  assert.ok(await page.evaluate((t) => window.__world.time > t, t));
+};

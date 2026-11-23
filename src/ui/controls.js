@@ -2,6 +2,7 @@ import { h } from './dom.js';
 import { World, DEFAULT_SETTINGS } from '../sim/world.js';
 import { DEFAULT_ENV } from '../sim/environment.js';
 import { saveSettings } from '../storage.js';
+import { showSheet } from './runs.js';
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 // [key, label, min, max, step, live?] — non-live settings apply on Reseed.
@@ -43,7 +44,9 @@ export function mountControls(root, app) {
     playBtn,
     h('button', { id: 'btn-step', 'aria-label': 'Step', onclick: () => { app.paused = true; app.world.step(); sync(); } }, '⏭'),
     h('div', { class: 'group' }, speedBtns),
-    h('button', { id: 'btn-settings', onclick: () => toggle(sheet) }, 'Settings'),
+    h('button', { id: 'btn-settings', onclick: () => showSheet(sheet) }, 'Settings'),
+    h('button', { id: 'btn-runs', onclick: () => app.ui.runs.openRuns() }, 'Runs'),
+    h('button', { id: 'btn-timeline', onclick: () => app.ui.runs.openTimeline() }, 'Timeline'),
     h('button', { id: 'btn-charts', onclick: () => toggle(app.ui.charts.panel) }, 'Graphs'),
     fps);
 
