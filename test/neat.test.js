@@ -17,7 +17,7 @@ test('founders are minimal', () => {
   for (let i = 0; i < 50; i++) {
     const b = createBrain(r);
     assert.equal(hidden(b).length, 0);
-    assert.ok(b.conns.length >= 4 && b.conns.length <= 8, `${b.conns.length}`);
+    assert.ok(b.conns.length >= 8 && b.conns.length <= 16, `${b.conns.length}`); // 8–16: enough to wire some rays to movement
     for (const c of b.conns) assert.ok(c.from < N_IN && c.to >= N_IN);
   }
 });
