@@ -1,0 +1,86 @@
+import { GENES, genomeDistance, cloneGenome } from './genome.js';
+
+const INT_GENES = GENES.filter((g) => g.int).map((g) => g.key);
+const MIN_ANNOUNCE = 10;
+
+export class SpeciesTracker {
+  constructor({ threshold = 0.25 } = {}) {
+    this.threshold = threshold;
+    this.species = [];
+    this.nextId = 1;
+    this.nextCheckpointId = 1;
+    this.seenLegs = null; // global "first N-legged lineage"
+    this.firstCarnivores = false;
+  }
+
+  update(creatures, time) {
+    for (const s of this.species) { s.members = []; }
+    for (const c of creatures) {
+      let sp = this.species.find((s) => genomeDistance(s.repGenome, c.genome) < this.threshold);
+      if (!sp) {
+        sp = { id: this.nextId++, repGenome: cloneGenome(c.genome), firstSeen: time, announced: false, members: [] };
+        this.species.push(sp);
+      }
+      sp.members.push(c);
+      c.speciesId = sp.id;
+    }
+    this.species = this.species.filter((s) => s.members.length > 0);
+
+    const out = [];
+    const cp = (s, kind, title) => out.push({
+      id: this.nextCheckpointId++, time, speciesId: s.id, kind, title,
+      genome: cloneGenome(s.members[0].genome), avgBody: { ...s.avgBody },
+    });
+    const initLegs = this.seenLegs === null;
+    if (initLegs) this.seenLegs = new Set();
+
+    for (const s of this.species) {
+      s.count = s.members.length;
+      s.avgBody = {};
+      for (const { key } of GENES) s.avgBody[key] = s.members.reduce((a, c) => a + c.genome.body[key], 0) / s.count;
+      const tally = {};
+      for (const c of s.members) if (c.label) tally[c.label] = (tally[c.label] || 0) + 1;
+      s.dominantLabel = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0] || null;
+      const legs = Math.round(s.avgBody.legs);
+      if (initLegs) this.seenLegs.add(legs); // founders don't count as "firsts"
+
+      if (!s.announced) {
+        if (s.count < MIN_ANNOUNCE) continue;
+        s.announced = true;
+        s.shown = Object.fromEntries(INT_GENES.map((k) => [k, Math.round(s.avgBody[k])]));
+        s.carnivore = s.avgBody.diet > 0.5;
+        s.shownLabel = s.dominantLabel;
+        if (initLegs) continue;
+        cp(s, 'new-species', `Species ${s.id} emerged (${s.count} members, ${legs} legs)`);
+      } else {
+        // Hysteresis: only announce when the average is clearly past the next whole number.
+        for (const k of INT_GENES) {
+          const avg = s.avgBody[k], prev = s.shown[k];
+          if (Math.abs(avg - prev) >= 0.75) {
+            const now = Math.round(avg);
+            cp(s, 'body-shift', `Species ${s.id}: ${k} ${prev} → ${now}`);
+            s.shown[k] = now;
+          }
+        }
+        const carn = s.carnivore ? s.avgBody.diet > 0.4 : s.avgBody.diet > 0.6;
+        if (carn !== s.carnivore) {
+          s.carnivore = carn;
+          cp(s, 'body-shift', `Species ${s.id} became ${carn ? 'carnivorous' : 'herbivorous'}`);
+        }
+        if (s.dominantLabel && s.shownLabel && s.dominantLabel !== s.shownLabel) {
+          cp(s, 'behavior-shift', `Species ${s.id}: ${s.shownLabel} → ${s.dominantLabel}`);
+        }
+        if (s.dominantLabel) s.shownLabel = s.dominantLabel;
+      }
+      if (s.carnivore && !this.firstCarnivores) {
+        this.firstCarnivores = true;
+        if (!initLegs) cp(s, 'first', 'First carnivores evolved');
+      }
+      if (!this.seenLegs.has(legs)) {
+        this.seenLegs.add(legs);
+        if (!initLegs) cp(s, 'first', `First ${legs}-legged lineage`);
+      }
+    }
+    return out;
+  }
+}

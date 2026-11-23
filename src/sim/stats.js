@@ -1,0 +1,29 @@
+import { LABELS } from './behavior.js';
+
+const AVG_KEYS = ['size', 'legs', 'digits', 'eyes', 'antennae', 'mouth', 'diet', 'insulation'];
+const MAX_POINTS = 2000;
+
+export class StatsRecorder {
+  constructor({ interval = 2 } = {}) {
+    this.interval = interval;
+    this.series = [];
+  }
+
+  due(time) { return !this.series.length || time - this.series.at(-1).t >= this.interval - 1e-9; }
+
+  sample(world) {
+    const cs = world.creatures, n = cs.length || 1;
+    const avg = {};
+    for (const k of AVG_KEYS) avg[k] = cs.reduce((a, c) => a + c.genome.body[k], 0) / n;
+    avg.speed = cs.reduce((a, c) => a + c.stats.speed, 0) / n;
+    const labels = Object.fromEntries(LABELS.map((l) => [l, 0]));
+    for (const c of cs) if (c.label) labels[c.label]++;
+    const carn = cs.filter((c) => c.genome.body.diet > 0.5).length;
+    this.series.push({ t: world.time, pop: cs.length, herb: cs.length - carn, carn, food: world.food.length, avg, labels, species: world.tracker ? world.tracker.species.length : 0 });
+    // Halve resolution when full so the series stays bounded and evenly spaced.
+    if (this.series.length > MAX_POINTS) {
+      this.series = this.series.filter((_, i) => i % 2 === 0);
+      this.interval *= 2;
+    }
+  }
+}

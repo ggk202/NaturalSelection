@@ -4,6 +4,11 @@ import { deriveStats } from './body.js';
 import { think, INPUTS, OUTPUTS } from './brain.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
+import { labelOf, emptyCounters } from './behavior.js';
+import { SpeciesTracker } from './species.js';
+import { StatsRecorder } from './stats.js';
+
+const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 100, initialCreatures: 60, maxCreatures: 400,
@@ -28,6 +33,11 @@ export class World {
     this.food = [];
     this.events = [];
     this.time = 0;
+    this.tracker = new SpeciesTracker();
+    this.stats = new StatsRecorder();
+    this.checkpoints = [];
+    this.nextLabelAt = LABEL_WINDOW;
+    this.nextSpeciesAt = 0;
     this.nextId = 1;
     this.elite = []; // top parents by child count: { genome, children }
     this.foodGrid = new Grid(8, s.worldSize);
@@ -46,7 +56,7 @@ export class World {
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
       energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0,
       lastOutputs: new Float32Array(OUTPUTS.length),
-      actionCounters: { moved: 0, ate: 0, attacked: 0, fled: 0, idle: 0 },
+      actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     this.creatures.push(c);
     return c;
@@ -152,6 +162,7 @@ export class World {
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
       c.energy -= (st.upkeep + 0.01 * v * c.genome.body.size + this.envCost(c, inp)) * dt;
+      c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
       if (c.threatNear && throttle > 0.3 && Math.abs(inp[5]) > 0.5) c.actionCounters.fled++;
       this.eat(c);
@@ -170,6 +181,23 @@ export class World {
     this.food = this.food.filter((f) => !f.eaten);
     this.respawn();
     this.time += dt;
+    this.periodic();
+  }
+
+  periodic() {
+    const t = this.time + 1e-9;
+    if (t >= this.nextLabelAt) {
+      this.nextLabelAt += LABEL_WINDOW;
+      for (const c of this.creatures) { c.label = labelOf(c.actionCounters) ?? c.label; c.actionCounters = emptyCounters(); }
+    }
+    if (t >= this.nextSpeciesAt) {
+      this.nextSpeciesAt += SPECIES_EVERY;
+      for (const cp of this.tracker.update(this.creatures, this.time)) {
+        this.checkpoints.push(cp);
+        this.emit({ type: 'checkpoint', checkpoint: cp });
+      }
+    }
+    if (this.stats.due(this.time)) this.stats.sample(this);
   }
 
   // Extra energy/s from temperature and hazards; reuses the temperature/hazard inputs just sensed.
