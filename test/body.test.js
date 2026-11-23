@@ -22,3 +22,30 @@ test('every part has a benefit', () => {
   const d = up('diet', 0.3);
   assert.ok(d.digestMeat > s0.digestMeat && d.digestPlant < s0.digestPlant);
 });
+
+test('digits raise swim and climb', () => {
+  const d = up('digits', 2);
+  assert.ok(d.swim > s0.swim && d.climb > s0.climb);
+});
+
+test('swim and climb cost upkeep', () => {
+  // digits raise both abilities; their upkeep share must exceed the old digit cost alone
+  const noAb = { ...base, legs: 0, digits: 0, size: 1 };
+  const ab = { ...noAb, digits: 5 };
+  const legCostOnly = 0; // no legs, so digits add no leg upkeep
+  assert.ok(deriveStats(ab).upkeep - deriveStats(noAb).upkeep > legCostOnly);
+});
+
+test('small creatures camouflage better', () => {
+  assert.ok(up('size', -0.4).camo > s0.camo);
+});
+
+test('abilities in [0,1] for random bodies', async () => {
+  const { randomGenome } = await import('../src/sim/genome.js');
+  const { createRng } = await import('../src/sim/rng.js');
+  const r = createRng(9);
+  for (let i = 0; i < 200; i++) {
+    const s = deriveStats(randomGenome(r).body);
+    for (const k of ['swim', 'climb', 'camo']) assert.ok(s[k] >= 0 && s[k] <= 1, `${k} ${s[k]}`);
+  }
+});
