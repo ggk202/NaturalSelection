@@ -144,3 +144,22 @@ test('creatures in a lake are safe from non-swimming hunters', () => {
   for (let i = 0; i < 40; i++) w.step();
   assert.ok(prey.alive, 'prey should be safe');
 });
+
+test('lake drain is steep for poor swimmers', () => {
+  const w = new World(T), lake = BIOMES[BIOME.lake];
+  const at = (swim) => w.biomeDrain({ stats: { swim } }, lake);
+  assert.ok(Math.abs(at(0) - 0.6) < 1e-9);
+  assert.ok(at(0.5) < 0.2 && at(1) === 0);
+});
+
+test('barrier habitats are rich', () => {
+  assert.ok(BIOMES[BIOME.lake].fertility >= 1.5 && BIOMES[BIOME.mountain].fertility >= 1.5);
+});
+
+test('mountains are slow unless a good climber', () => {
+  const w = new World(T), p = interior(w, 'mountain');
+  const poor = w.spawn(genome({ legs: 1, digits: 0 }), p.x, p.z), good = w.spawn(genome({ legs: 4, digits: 5 }), p.x, p.z);
+  assert.ok(good.stats.climb > 0.9 && poor.stats.climb < 0.1);
+  const flat = (c) => { const s = w.terrain.slopeAlong; w.terrain.slopeAlong = () => 0; const v = w.terrainSpeed(c); w.terrain.slopeAlong = s; return v; };
+  assert.ok(flat(good) > flat(poor) * 1.8, `${flat(good)} vs ${flat(poor)}`);
+});

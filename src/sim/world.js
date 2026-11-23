@@ -112,7 +112,7 @@ export class World {
   }
 
   // Energy/s lost to the biome itself (drowning in lakes scales with lack of swimming).
-  biomeDrain(c, b) { return b.id === BIOME.lake ? b.drain * (1 - c.stats.swim) : b.drain; }
+  biomeDrain(c, b) { return b.id === BIOME.lake ? b.drain * (1 - c.stats.swim) ** 2 : b.drain; }
 
   emit(e) {
     this.events.push({ time: this.time, ...e });
@@ -264,7 +264,9 @@ export class World {
     const b = this.biomeOf(c), s = this.terrain.slopeAlong(c.x, c.z, c.heading);
     if (s > 0.6 && c.stats.climb < s - 0.4) return 0;
     // Water slows everyone; swimming recovers most (not all) of the land speed.
-    let m = b.id === BIOME.lake || b.id === BIOME.wetland ? b.moveMul + (0.9 - b.moveMul) * c.stats.swim : b.moveMul;
+    // Mountains likewise reward climbing.
+    const skill = b.id === BIOME.lake || b.id === BIOME.wetland ? c.stats.swim : b.id === BIOME.mountain ? c.stats.climb : null;
+    let m = skill == null ? b.moveMul : b.moveMul + (0.9 - b.moveMul) * skill;
     m /= 1 + Math.max(0, s) * 2;
     return m * (1 + Math.min(0.3, Math.max(0, -s)));
   }

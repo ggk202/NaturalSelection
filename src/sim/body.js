@@ -2,8 +2,8 @@
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 export function deriveStats(b) {
-  const swim = clamp01(0.15 * b.digits + 0.25 * b.size - 0.05 * b.legs + 0.2); // webbing + bulk; legs drag
-  const climb = clamp01(0.05 * b.legs * (1 + 0.3 * b.digits)); // grip
+  const swim = clamp01(0.12 * b.digits + 0.2 * b.size - 0.06 * b.legs); // webbing + bulk; legs drag
+  const climb = clamp01(0.2 * b.digits * Math.min(1, b.legs / 2)); // grip needs digits on at least two legs
   const legPower = b.legs * (1 + 0.1 * b.digits);
   return {
     speed: 1 + 0.35 * legPower / Math.sqrt(b.size),

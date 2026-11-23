@@ -49,3 +49,18 @@ test('abilities in [0,1] for random bodies', async () => {
     for (const k of ['swim', 'climb', 'camo']) assert.ok(s[k] >= 0 && s[k] <= 1, `${k} ${s[k]}`);
   }
 });
+
+test('average founder is a poor swimmer and climber', async () => {
+  const { randomGenome } = await import('../src/sim/genome.js');
+  const { createRng } = await import('../src/sim/rng.js');
+  const r = createRng(4); let sw = 0, cl = 0;
+  for (let i = 0; i < 500; i++) { const s = deriveStats(randomGenome(r).body); sw += s.swim; cl += s.climb; }
+  assert.ok(sw / 500 < 0.45, `swim ${sw / 500}`);
+  assert.ok(cl / 500 < 0.5, `climb ${cl / 500}`);
+});
+
+test('climbing comes from grip (digits), not leg count alone', () => {
+  const B = { ...base, digits: 0 };
+  assert.ok(deriveStats({ ...B, legs: 8 }).climb < 0.1);
+  assert.ok(deriveStats({ ...B, legs: 2, digits: 5 }).climb >= 0.9);
+});
