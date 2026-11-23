@@ -11,7 +11,6 @@ for (const seed of process.argv.slice(2).map(Number)) {
     }
     if (m % 10 === 0) {
       const L = {}; for (const c of w.creatures) L[c.label] = (L[c.label] || 0) + 1;
-      const callers = w.creatures.filter((c) => c.genome.brain.conns.some((k) => k.on && k.to === 56 + 39 + 0)).length;
       console.log(`seed ${seed} ${m}m pop ${w.creatures.length} calls/step ${(calls / 1200).toFixed(1)} labels ${JSON.stringify(L)}`);
     }
   }

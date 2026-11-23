@@ -5,34 +5,51 @@ import { genome } from './helpers.js';
 
 const setup = () => {
   const t = new SpeciesTracker();
-  const cs = Array.from({ length: 12 }, () => ({ genome: genome({ size: 0.5, legs: 3, eyes: 0, mouth: 0.2, diet: 0 }), label: 'wanderer' }));
+  const cs = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, genome: genome({ size: 0.5, legs: 3, eyes: 0, mouth: 0.2, diet: 0 }), label: 'wanderer' }));
   t.update(cs, 0);
-  return { t, c: cs[0] };
+  return { t, cs };
 };
 const ctx = (threat = false, food = false, kin = false) => ({ threat, food, kin });
+const evaluate = (t, cs, time = 5) => t.update(cs, time);
 
-test('an alarm call is detected once', () => {
-  const { t, c } = setup();
-  for (let i = 0; i < 1000; i++) t.noteContext(c, ctx(i % 10 === 0)); // threats 10% of the time
-  for (let i = 0; i < 60; i++) t.noteCall(c, 0, ctx(i % 10 !== 0)); // 'ka' with a threat 90%
-  const cps = t.update([c, ...Array.from({ length: 11 }, () => c)], 5);
-  const alarm = cps.filter((x) => /alarm call/.test(x.title));
-  assert.ok(alarm.some((x) => /Species \d+ evolved an alarm call \("ka"\)/.test(x.title)), cps.map((x) => x.title).join('|'));
+// Callers' everyday life (base rate) and their calls are recorded on a shared step clock.
+function live(t, callers, { syll, callCtx, baseCtx, calls = 12, baseSamples = 60 }) {
+  let step = 0;
+  for (let r = 0; r < calls; r++) {
+    for (const c of callers) {
+      step += 40; // calls spaced out so each counts as its own event
+      t.noteCall(c, syll, callCtx(r), step);
+      for (let b = 0; b < baseSamples / calls; b++) t.noteContext(c, baseCtx(b), step + b);
+    }
+  }
+}
+
+test('an alarm call is detected once when several callers call at threats', () => {
+  const { t, cs } = setup();
+  live(t, cs.slice(0, 6), { syll: 0, callCtx: (r) => ctx(r % 10 !== 0), baseCtx: (b) => ctx(b % 10 === 0) });
+  const cps = evaluate(t, cs);
+  assert.ok(cps.some((x) => /Species \d+ evolved an alarm call \("ka"\)/.test(x.title)), cps.map((x) => x.title).join('|'));
   assert.ok(cps.some((x) => x.title === 'First alarm call'));
-  assert.equal(t.species.find((s) => s.id === c.speciesId).lexicon.ka, 'alarm');
-  assert.equal(t.update([c, ...Array.from({ length: 11 }, () => c)], 10).filter((x) => /alarm/.test(x.title)).length, 0);
+  assert.deepEqual(t.species[0].lexicon.ka, ['alarm']);
+  assert.equal(evaluate(t, cs, 10).filter((x) => /alarm/.test(x.title)).length, 0);
 });
 
-test('fewer than 50 calls never counts as meaning', () => {
-  const { t, c } = setup();
-  for (let i = 0; i < 1000; i++) t.noteContext(c, ctx(false));
-  for (let i = 0; i < 40; i++) t.noteCall(c, 1, ctx(true));
-  assert.equal(t.update(Array(12).fill(c), 5).filter((x) => /call/.test(x.title)).length, 0);
+test('one creature calling a lot is not a word', () => {
+  const { t, cs } = setup();
+  live(t, cs.slice(0, 1), { syll: 1, callCtx: () => ctx(true), baseCtx: () => ctx(false), calls: 80 });
+  assert.equal(evaluate(t, cs).filter((x) => /call/.test(x.title)).length, 0);
 });
 
-test('a context at its base rate is not a meaning', () => {
-  const { t, c } = setup();
-  for (let i = 0; i < 1000; i++) t.noteContext(c, ctx(false, i % 10 < 8)); // food seen 80% anyway
-  for (let i = 0; i < 100; i++) t.noteCall(c, 2, ctx(false, i % 10 < 8));
-  assert.equal(t.update(Array(12).fill(c), 5).filter((x) => /call/.test(x.title)).length, 0);
+test('a constant caller standing beside food proves nothing', () => {
+  const { t, cs } = setup();
+  // These callers have food in view nearly all the time anyway, calling or not.
+  live(t, cs.slice(0, 6), { syll: 2, callCtx: () => ctx(false, true), baseCtx: (b) => ctx(false, b % 20 !== 0) });
+  for (const c of cs.slice(6)) for (let b = 0; b < 60; b++) t.noteContext(c, ctx(false, false), 10_000 + b); // rest of species: no food
+  assert.equal(evaluate(t, cs).filter((x) => /call/.test(x.title)).length, 0);
+});
+
+test('rapid repeats by the same caller count once', () => {
+  const { t, cs } = setup();
+  for (let s = 0; s < 200; s++) t.noteCall(cs[0], 3, ctx(true), s); // one creature, 200 consecutive steps
+  assert.ok(t.species[0].sig.calls[3].n <= 6);
 });

@@ -3,7 +3,9 @@ import { GENES, genomeDistance, cloneGenome } from './genome.js';
 export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
 const MEANINGS = [['threat', 'alarm'], ['food', 'food'], ['kin', 'kin']];
 const add = (o, ctx) => { o.n++; if (ctx.threat) o.threat++; if (ctx.food) o.food++; if (ctx.kin) o.kin++; };
-const halve = (o) => { for (const k of Object.keys(o)) o[k] = Math.floor(o[k] / 2); };
+const halve = (o) => { for (const k of ['n', 'threat', 'food', 'kin']) o[k] = Math.floor(o[k] / 2); };
+const blank = () => ({ n: 0, threat: 0, food: 0, kin: 0 });
+const CALL_GAP = 40, CALLER_MEMORY = 200, MIN_CALLERS = 5; // steps; distinct callers needed for a word
 
 const INT_GENES = GENES.filter((g) => g.int).map((g) => g.key);
 const MIN_ANNOUNCE = 10;
@@ -39,28 +41,47 @@ export class SpeciesTracker {
   }
 
   // biomeOf(creature) -> biome key; optional so callers without terrain still work.
-  // Signal statistics per species: contexts at each call vs. contexts in general (base rates).
+  // Signal statistics per species. Each syllable's call contexts are compared with its own callers'
+  // everyday contexts (not the whole species), so a family that simply lives near food proves nothing.
   sigOf(c) {
     const s = c.speciesId != null && this.species.find((x) => x.id === c.speciesId);
     if (!s) return null;
-    return (s.sig ||= { calls: SYLLABLES.map(() => ({ n: 0, threat: 0, food: 0, kin: 0 })), base: { n: 0, threat: 0, food: 0, kin: 0 } });
+    return (s.sig ||= { calls: SYLLABLES.map(() => ({ ...blank(), callers: [] })), callerBase: SYLLABLES.map(blank), base: blank() });
   }
-  noteContext(c, ctx) { const g = this.sigOf(c); if (g) add(g.base, ctx); }
-  noteCall(c, syll, ctx) { const g = this.sigOf(c); if (g) add(g.calls[syll], ctx); }
+  // Everyday context sample; also credited to the syllable this creature has used recently.
+  noteContext(c, ctx, step = 0) {
+    const g = this.sigOf(c);
+    if (!g) return;
+    add(g.base, ctx);
+    if (c.lastCall && step - c.lastCall.step < CALLER_MEMORY) add(g.callerBase[c.lastCall.syll], ctx);
+  }
+  // A call counts as one event per caller per CALL_GAP steps; distinct callers are tracked.
+  noteCall(c, syll, ctx, step = 0) {
+    const g = this.sigOf(c);
+    if (!g) return;
+    const prev = c.lastCall;
+    c.lastCall = { syll, step };
+    if (prev && prev.syll === syll && step - prev.noted < CALL_GAP) { c.lastCall.noted = prev.noted; return; }
+    c.lastCall.noted = step;
+    const k = g.calls[syll];
+    add(k, ctx);
+    if (!k.callers.includes(c.id)) { k.callers.push(c.id); if (k.callers.length > MIN_CALLERS * 2) k.callers.shift(); }
+  }
 
-  // A syllable means a context when it reliably accompanies it (≥60%) well above chance (≥2× base rate).
+  // A syllable means a context when, across several callers, it reliably accompanies it (≥60%)
+  // and at least twice as often as those same callers meet that context anyway.
   meanings(s, time, cp) {
     const g = s.sig;
-    if (!g || !g.base.n) return;
-    s.lexicon ||= {};
+    if (!g) return;
+    s.lexicon = {};
     s.meant ||= {};
     SYLLABLES.forEach((name, k) => {
-      const c = g.calls[k];
-      if (c.n < 50) return;
+      const c = g.calls[k], cb = g.callerBase[k];
+      if (c.n < 50 || c.callers.length < MIN_CALLERS || cb.n < 20) return;
       for (const [ctx, label] of MEANINGS) {
-        const p = c[ctx] / c.n, base = g.base[ctx] / g.base.n;
+        const p = c[ctx] / c.n, base = cb[ctx] / cb.n;
         if (p < 0.6 || p < 2 * base) continue;
-        s.lexicon[name] = label;
+        (s.lexicon[name] ||= []).push(label);
         if (s.meant[`${name}:${ctx}`]) continue;
         s.meant[`${name}:${ctx}`] = true;
         cp(s, 'first', `Species ${s.id} evolved ${label === 'alarm' ? 'an alarm' : `a ${label}`} call ("${name}")`);
@@ -68,7 +89,7 @@ export class SpeciesTracker {
       }
     });
     // Keep the statistics recent: halve once a species has called a lot.
-    if (g.calls.reduce((a, c) => a + c.n, 0) > 2000) { for (const c of g.calls) halve(c); halve(g.base); }
+    if (g.calls.reduce((a, c) => a + c.n, 0) > 2000) { for (const c of g.calls) halve(c); for (const c of g.callerBase) halve(c); halve(g.base); }
   }
 
   // Ambush milestones: once globally, once per species.

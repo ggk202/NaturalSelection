@@ -19,6 +19,7 @@ export const app = {
   listeners: new Set(), // called with world events each frame
   setWorld(world, runId = `run-${Date.now()}`, runName = new Date().toLocaleString()) {
     app.world = world; app.runId = runId; app.runName = runName;
+    app.followId = null; app.memoryId = null; // ids restart in a new world
     window.__world = world;
     view.setWorld(world);
   },

@@ -1,6 +1,6 @@
 import { h } from './dom.js';
 import { createPreview } from '../render/preview.js';
-import { GENES } from '../sim/genome.js';
+import { GENES, relatedness } from '../sim/genome.js';
 import { intelligence } from '../sim/neat.js';
 import { SYLLABLES } from '../sim/species.js';
 import { drawBrainGraph } from './brain-graph.js';
@@ -43,7 +43,7 @@ export function mountInspector(root, app) {
   function update() {
     if (panel.hidden || id == null) return;
     const c = app.world.find(id);
-    if (!c) { status.textContent = 'Died'; app.followId = app.followId === id ? null : app.followId; return; }
+    if (!c) { status.textContent = 'Died'; if (app.followId === id) app.followId = null; if (app.memoryId === id) app.memoryId = null; sync(); return; }
     parentId = c.parentId;
     parentBtn.disabled = !app.world.find(c.parentId);
     title.textContent = `Creature #${c.id}`;
@@ -56,11 +56,13 @@ export function mountInspector(root, app) {
       genes.replaceChildren(...GENES.map((g) => h('tr', {}, h('th', {}, g.key), h('td', {}, fmt(c.genome.body[g.key])))));
     }
     const syl = (k) => (k >= 0 ? SYLLABLES[k] : '–');
-    const lex = sp && sp.lexicon ? Object.entries(sp.lexicon).map(([w, m]) => `${w} = ${m}`).join(', ') : '';
+    const lex = sp && sp.lexicon ? Object.entries(sp.lexicon).map(([w, m]) => `${w} = ${[].concat(m).join('/')}`).join(', ') : '';
+    const kin = c.nearestSeen ? relatedness(c.genome, c.nearestSeen.genome) : null;
     const b = c.genome.brain;
     mind.replaceChildren(...[
       ['intelligence', intelligence(b).toFixed(1)], ['learning rate', (b.lr || 0).toFixed(3)],
       ['neurons / links', `${b.nodes.filter((n) => n.type === 'hid').length} / ${b.conns.filter((k) => k.on).length}`],
+      ['nearest seen is kin', kin == null ? '–' : `${Math.round(kin * 100)}%`],
       ['saying', syl(c.said ?? -1)], ['hearing', syl(c.heard ?? -1)], ['species words', lex || 'none yet'],
     ].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))));
     stats.replaceChildren(...STAT_KEYS.map((k) => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c.stats[k])))));

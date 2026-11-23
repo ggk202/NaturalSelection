@@ -14,6 +14,7 @@ import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
+const CALL_ON = 0.6;
 const CALL_COST = 0.05; // energy/s at full loudness (≈ base upkeep; 0.3 starved founders)
 const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
@@ -181,7 +182,9 @@ export class World {
     let loudest = null, best = 0;
     for (const k of this.calls) {
       if (k.id === c.id) continue;
-      const dx = this.delta(c.x, k.x), dz = this.delta(c.z, k.z), d = Math.hypot(dx, dz), R = (10 + 30 * k.loud) * ears;
+      const dx = this.delta(c.x, k.x), dz = this.delta(c.z, k.z), R = (10 + 30 * k.loud) * ears;
+      if (Math.abs(dx) >= R || Math.abs(dz) >= R) continue; // cheap reject before hypot
+      const d = Math.hypot(dx, dz);
       if (d >= R) continue;
       const v = k.loud * (1 - d / R), slot = S[`hear${k.syll}`];
       if (v > out[slot]) out[slot] = v;
@@ -268,8 +271,9 @@ export class World {
       if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
       if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
-      if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c)); // base rates, sampled
-      if (o[4] > 0.5) this.call(c, (o[4] - 0.5) * 2, (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
+      if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c), this.stepCount); // base rates, sampled
+      // Dead-zone: a drifting unwired output (≈0.5) must not murmur constantly.
+      if (o[4] > CALL_ON) this.call(c, (o[4] - CALL_ON) / (1 - CALL_ON), (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
       else c.said = -1;
       if (o[3] >= 0.5) this.reproduce(c); // unwired output (0.5) = willing; brains can evolve restraint
       c.age += dt;
@@ -320,7 +324,7 @@ export class World {
     this.newCalls.push({ x: c.x, z: c.z, syll, loud, id: c.id, genome: c.genome });
     this.callCounts[syll]++;
     c.said = syll;
-    this.tracker.noteCall(c, syll, this.callContext(c));
+    this.tracker.noteCall(c, syll, this.callContext(c), this.stepCount);
   }
 
   // What was going on when a creature called: threat seen, food seen, kin nearby.
