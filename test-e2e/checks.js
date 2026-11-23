@@ -48,3 +48,11 @@ checks['rejects unknown schemaVersion'] = async ({ page, base, assert }) => {
   assert.match(r.err, /schema/);
   assert.deepEqual(r.still, ['old']);
 };
+
+checks['app boots'] = async ({ page, base, errors, assert }) => {
+  await page.goto(`${base}/`);
+  await page.waitForFunction(() => window.__world && window.__frames > 30, null, { timeout: 15000 });
+  assert.ok(await page.$('canvas#view'));
+  assert.ok(await page.evaluate(() => window.__world.creatures.length > 0));
+  assert.deepEqual(errors, []);
+};
