@@ -108,3 +108,14 @@ test('colonized fires once', () => {
   assert.match(cps[0].title, /colonized the desert/);
   assert.equal(t.update(cs, 10, by).filter((c) => c.kind === 'colonized').length, 0);
 });
+
+test('dextrous checkpoint when most of a species has grippers', () => {
+  const t = new SpeciesTracker();
+  const cs = pop(A, 12);
+  t.update(cs, 0);
+  for (const c of cs.slice(0, 8)) { const g = genome({ ...c.params }); g.body.nodes[0].gripper = true; c.genome = g; }
+  const cps = t.update(cs, 5);
+  assert.ok(cps.some((x) => /became dextrous/.test(x.title)), cps.map((x) => x.title).join('|'));
+  assert.ok(cps.some((x) => x.title === 'First dextrous species'));
+  assert.equal(t.update(cs, 10).filter((x) => /dextrous/.test(x.title)).length, 0);
+});

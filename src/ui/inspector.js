@@ -6,7 +6,7 @@ import { SYLLABLES } from '../sim/species.js';
 import { drawBrainGraph } from './brain-graph.js';
 
 const POS = '#3987e5', NEG = '#d95926';
-const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'swim', 'climb', 'camo', 'upkeep', 'maxEnergy'];
+const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'swim', 'climb', 'camo', 'endurance', 'dexterity', 'mass', 'upkeep', 'maxEnergy'];
 const fmt = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
 
 export function mountInspector(root, app) {

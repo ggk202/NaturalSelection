@@ -1,13 +1,11 @@
 import * as THREE from '../../vendor/three.module.min.js';
-import { placeParts } from './parts.js';
-import { creatureColor } from './creatures.js';
+import { creatureColor, organsOf } from './creatures.js';
 import { traitsOf } from '../sim/genome.js';
+import { expandBody } from '../sim/bodyplan.js';
 
-const GEOMS = {
-  body: new THREE.IcosahedronGeometry(1, 0), leg: new THREE.CylinderGeometry(1, 0.7, 1, 5),
-  digit: new THREE.ConeGeometry(1, 1, 4), eye: new THREE.IcosahedronGeometry(1, 0),
-  antenna: new THREE.CylinderGeometry(1, 1, 1, 4), mouth: new THREE.ConeGeometry(1, 1, 5),
-};
+const BOX = new THREE.BoxGeometry(1, 1, 1);
+const ORGAN = { eyes: new THREE.IcosahedronGeometry(1, 0), mouths: new THREE.ConeGeometry(1, 1, 5).rotateZ(-Math.PI / 2), antennae: new THREE.CylinderGeometry(1, 1, 1, 4).translate(0, 0.5, 0), spikes: new THREE.ConeGeometry(1, 1, 4).translate(0, 0.5, 0), claws: new THREE.ConeGeometry(1, 1, 4).rotateZ(-Math.PI / 2) };
+const ORGAN_COLOR = { eyes: 0xf4f4f0, mouths: 0x3a2a2a, claws: 0x2c2620 };
 
 // One shared renderer: iPad Safari caps live WebGL contexts, so previews draw offscreen and blit.
 let shared = null;
@@ -25,18 +23,24 @@ function getShared() {
   return shared;
 }
 
-export function buildCreature(body) {
-  const group = new THREE.Group(), color = creatureColor(body);
-  const mats = {
-    body: new THREE.MeshLambertMaterial({ color, flatShading: true }),
-    limb: new THREE.MeshLambertMaterial({ color: color.clone().multiplyScalar(0.7), flatShading: true }),
-    eye: new THREE.MeshLambertMaterial({ color: 0xf4f4f0, flatShading: true }),
-    mouth: new THREE.MeshLambertMaterial({ color: 0x3a2a2a, flatShading: true }),
-  };
-  for (const p of placeParts(body)) {
-    const mesh = new THREE.Mesh(GEOMS[p.type], mats[p.type] || mats.limb);
-    mesh.position.fromArray(p.position); mesh.rotation.set(...p.rotation); mesh.scale.fromArray(p.scale);
-    group.add(mesh);
+// The creature's rest pose: one box per body part plus its organs (same placement as the world view).
+export function buildCreature(genome) {
+  const group = new THREE.Group(), color = creatureColor(traitsOf(genome));
+  for (const p of expandBody(genome.body)) {
+    const part = new THREE.Group();
+    part.position.fromArray(p.pos); part.quaternion.fromArray(p.rot);
+    const tint = color.clone();
+    if (p.covering === 'fur') tint.lerp(new THREE.Color(0x9a7a55), 0.5); else if (p.covering === 'shell') tint.multiplyScalar(0.55);
+    const box = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: tint, flatShading: true }));
+    box.scale.fromArray(p.size);
+    part.add(box);
+    for (const [type, pos, scl, rot] of organsOf(p)) {
+      const o = new THREE.Mesh(ORGAN[type], new THREE.MeshLambertMaterial({ color: ORGAN_COLOR[type] ?? tint, flatShading: true }));
+      o.position.fromArray(pos); o.scale.fromArray(scl); o.rotation.set(...rot);
+      part.add(o);
+    }
+    group.add(part);
+    group.userData.radius = Math.max(group.userData.radius || 0, Math.hypot(...p.pos) + Math.max(...p.size) / 2);
   }
   return group;
 }
@@ -61,10 +65,11 @@ export function createPreview(canvas) {
   }
   return {
     show(genome) {
-      const t = traitsOf(genome), s = t.size, { camera } = getShared();
-      group = buildCreature(t);
-      camera.position.set(2.6 * s + 0.8, 1.6 * s + 0.6, 2.6 * s + 0.8);
-      camera.lookAt(0, 0.6 * s, 0);
+      const { camera } = getShared();
+      group = buildCreature(genome);
+      const s = group.userData.radius; // frame the whole body
+      camera.position.set(2.2 * s + 0.5, 1.4 * s + 0.4, 2.2 * s + 0.5);
+      camera.lookAt(0, 0, 0);
       if (!raf) loop();
     },
     dispose() { cancelAnimationFrame(raf); raf = 0; group = null; },

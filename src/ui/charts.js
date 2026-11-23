@@ -76,6 +76,10 @@ export const TABS = {
   biomes: { label: 'Biomes', keys: ['plains', 'forest', 'wetland', 'lake', 'mountain', 'desert'].map((b, i) => ({
     get: (p) => (p.biomes ? p.biomes[b] : 0), label: b[0].toUpperCase() + b.slice(1), color: SERIES[i],
   })) },
+  body: { label: 'Body', note: 'scaled to each trait’s range', keys: [
+    TRAIT('parts', 'Parts', 32, SERIES[0]), TRAIT('legs', 'Limbs', 12, SERIES[1]), TRAIT('grippers', 'Grippers', 12, SERIES[2]),
+    TRAIT('endurance', 'Endurance', 12, SERIES[3]), TRAIT('dexterity', 'Dexterity', 1, SERIES[4]),
+  ] },
   signals: { label: 'Signals', note: 'calls per minute', keys: ['ka', 'ru', 'mi', 'to'].map((name, i) => ({
     get: (p) => (p.calls ? p.calls[i] : 0), label: name, color: SERIES[i],
   })) },

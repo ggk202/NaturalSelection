@@ -4,7 +4,7 @@ import { createScene } from './render/scene.js';
 import { createStepper, runSteps } from './loop.js';
 import { saveRun, loadSettings, listRuns, loadRun } from './storage.js';
 import { mountRuns } from './ui/runs.js';
-import { mountControls } from './ui/controls.js';
+import { mountControls, worldSettings } from './ui/controls.js';
 import { mountCharts } from './ui/charts.js';
 import { mountInspector } from './ui/inspector.js';
 import { mountGodMode } from './ui/godmode.js';
@@ -49,7 +49,8 @@ const saved = await loadSettings();
 const runs = await listRuns();
 let bootError = null;
 if (runs.ok && runs.value.length) bootError = await app.loadRun(runs.value[0].id, runs.value[0].name);
-if (!app.world) app.setWorld(new World(saved.ok && saved.value ? saved.value : {}));
+// New runs default to physical bodies with a population size the physics can keep up with.
+if (!app.world) app.setWorld(new World(worldSettings({ physical: true, maxCreatures: 150, ...(saved.ok && saved.value ? saved.value : {}) })));
 
 const ui = document.getElementById('ui');
 app.ui = {};

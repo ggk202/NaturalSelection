@@ -8,6 +8,7 @@ const SPEEDS = [0.5, 1, 2, 4, 8];
 // [key, label, min, max, step, live?] — non-live settings apply on Reseed.
 const FIELDS = [
   ['World', [
+    ['physical', 'Physical bodies (muscles and joints)', null, null, null, false],
     ['seed', 'Seed', 1, 99999, 1, false],
     ['worldSize', 'World size', 60, 300, 10, false],
     ['waterLevel', 'Water level', 0, 0.5, 0.02, false],
@@ -37,8 +38,12 @@ const FIELDS = [
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'); ks.slice(0, -1).reduce((a, k) => a[k], o)[ks.at(-1)] = v; };
 
+// The settings sheet's checkbox maps to the world's locomotion mode.
+export const worldSettings = (d) => ({ ...structuredClone(d), locomotion: d.physical ? 'physical' : 'kinematic' });
+
 export function mountControls(root, app) {
   const draft = structuredClone({ ...DEFAULT_SETTINGS, ...app.world.settings, env: { ...DEFAULT_ENV, ...app.world.settings.env } });
+  draft.physical = app.world.settings.locomotion === 'physical';
   const fps = h('span', { class: 'fps' });
   const playBtn = h('button', { id: 'btn-play', 'aria-label': 'Play or pause', onclick: () => { app.paused = !app.paused; sync(); } });
   const speedBtns = SPEEDS.map((s) => h('button', { 'data-speed': s, onclick: () => { app.speed = s; sync(); } }, `${s}×`));
@@ -90,7 +95,7 @@ export function mountControls(root, app) {
   }
   async function reseed() {
     await app.save(); // keep the run being replaced
-    app.setWorld(new World(structuredClone(draft)));
+    app.setWorld(new World(worldSettings(draft)));
     app.paused = false;
     sync();
   }

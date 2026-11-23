@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { worldSettings } from './controls.js';
 import { World } from '../sim/world.js';
 import { serializeWorld } from '../sim/serialize.js';
 import { listRuns, deleteRun, renameRun } from '../storage.js';
@@ -54,7 +55,7 @@ export function mountRuns(root, app) {
   }
   async function newRun({ save = true } = {}) {
     if (save) await app.save();
-    app.setWorld(new World(structuredClone(app.ui.controls.draft)));
+    app.setWorld(new World(worldSettings(app.ui.controls.draft)));
     refresh();
   }
   function download() {

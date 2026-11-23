@@ -1,5 +1,5 @@
 // Rapier physics (deterministic build, wasm inlined). Initialised once at import.
-import RAPIER_NS from '../../vendor/rapier/rapier.mjs';
+import RAPIER_NS from '../../vendor/rapier/rapier.js';
 
 export const RAPIER = RAPIER_NS.default || RAPIER_NS;
 await RAPIER.init();

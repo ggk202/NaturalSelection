@@ -176,6 +176,11 @@ export class SpeciesTracker {
         }
       }
       if (s.announced) this.meanings(s, time, cp);
+      if (s.announced && !s.dextrous && s.members.filter((c) => traitsOf(c.genome).grippers > 0).length >= s.count / 2) {
+        s.dextrous = true;
+        cp(s, 'first', `Species ${s.id} became dextrous`);
+        if (!this.firstDextrous) { this.firstDextrous = true; cp(s, 'first', 'First dextrous species'); }
+      }
       if (s.carnivore && !this.firstCarnivores) {
         this.firstCarnivores = true;
         if (!initLegs) cp(s, 'first', 'First carnivores evolved');

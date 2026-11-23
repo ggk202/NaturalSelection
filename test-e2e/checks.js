@@ -365,3 +365,24 @@ checks['signals tab and intelligence trait draw'] = async ({ page, base, assert 
   await page.waitForTimeout(1200);
   assert.ok((await page.textContent('#charts .legend')).includes('Intelligence'));
 };
+
+checks['physical bodies render from body plans'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const r = await page.evaluate(() => {
+    const w = window.__world, seg = window.__view.scene.getObjectByName('segments');
+    const parts = w.creatures.reduce((a, c) => a + (c.parts ? c.parts.length : 0), 0);
+    return { physical: w.settings.locomotion, segs: seg ? seg.count : -1, parts, n: w.creatures.length };
+  });
+  assert.equal(r.physical, 'physical');
+  assert.ok(r.segs > 0 && r.segs === r.parts, JSON.stringify(r));
+  assert.deepEqual(errors, []);
+};
+
+checks['body tab shows endurance and dexterity'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.waitForFunction(() => window.__world.stats.series.length > 1, null, { timeout: 20000 });
+  await page.click('#charts [data-tab="body"]');
+  await page.waitForTimeout(1200);
+  const legend = await page.textContent('#charts .legend');
+  for (const k of ['Endurance', 'Dexterity']) assert.ok(legend.includes(k), k);
+};

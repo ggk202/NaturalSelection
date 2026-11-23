@@ -3,7 +3,7 @@ import { BIOMES } from './biomes.js';
 import { intelligence } from './neat.js';
 import { traitsOf } from './genome.js';
 
-const AVG_KEYS = ['size', 'legs', 'digits', 'eyes', 'antennae', 'mouth', 'diet', 'insulation'];
+const AVG_KEYS = ['parts', 'grippers', 'size', 'legs', 'digits', 'eyes', 'antennae', 'mouth', 'diet', 'insulation'];
 const MAX_POINTS = 2000;
 
 export class StatsRecorder {
@@ -20,6 +20,7 @@ export class StatsRecorder {
     for (const k of AVG_KEYS) avg[k] = cs.reduce((a, c) => a + traitsOf(c.genome)[k], 0) / n;
     avg.speed = cs.reduce((a, c) => a + c.stats.speed, 0) / n;
     avg.intelligence = cs.reduce((a, c) => a + intelligence(c.genome.brain), 0) / n;
+    for (const k of ['endurance', 'dexterity']) avg[k] = cs.reduce((a, c) => a + c.stats[k], 0) / n;
     // Calls per minute per syllable since the previous sample.
     const prevT = this.series.length ? this.series.at(-1).t : 0, span = Math.max(1e-6, world.time - prevT);
     const calls = world.callCounts ? world.callCounts.map((k) => (k * 60) / span) : [0, 0, 0, 0];

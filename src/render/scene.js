@@ -129,7 +129,7 @@ export function createScene(canvas) {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     }
-    creatures.update(world.creatures, world.time);
+    creatures.update(world);
     updateRings(world);
     food.count = Math.min(world.food.length, food.instanceMatrix.count);
     for (let i = 0; i < food.count; i++) {

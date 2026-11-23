@@ -12,7 +12,6 @@ const PRECACHE = [
   './src/loop.js',
   './src/main.js',
   './src/render/creatures.js',
-  './src/render/parts.js',
   './src/render/preview.js',
   './src/render/props.js',
   './src/render/scene.js',
@@ -45,7 +44,7 @@ const PRECACHE = [
   './src/ui/runs.js',
   './vendor/OrbitControls.js',
   './vendor/rapier/LICENSE',
-  './vendor/rapier/rapier.mjs',
+  './vendor/rapier/rapier.js',
   './vendor/three.module.min.js',
 ];
 
