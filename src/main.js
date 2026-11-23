@@ -4,6 +4,7 @@ import { createScene } from './render/scene.js';
 import { createStepper, runSteps } from './loop.js';
 import { saveRun, loadSettings, listRuns, loadRun } from './storage.js';
 import { mountRuns } from './ui/runs.js';
+import { mountFastForward } from './ui/fastforward.js';
 import { mountControls, worldSettings } from './ui/controls.js';
 import { mountCharts } from './ui/charts.js';
 import { mountInspector } from './ui/inspector.js';
@@ -29,6 +30,23 @@ export const app = {
     if (!r.ok && app.storageOk) { app.storageOk = false; app.onStorageError?.(r.error); }
     return r;
   },
+  // Fast-forward in a worker: the view pauses, the world comes back where the run stopped.
+  fastForward(cond, { progress, done }) {
+    if (app.ff) return;
+    const { runId, runName } = app, worker = new Worker(new URL('./ff-worker.js', import.meta.url), { type: 'module' });
+    app.paused = true;
+    app.ff = worker;
+    const finish = (msg) => { worker.terminate(); app.ff = null; app.paused = false; done(); app.ui.runs.toast(msg); };
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'progress') return progress(data);
+      app.setWorld(deserializeWorld(data.save), runId, runName);
+      finish(`⏩ Stopped: ${data.detail}`);
+      app.save();
+    };
+    worker.onerror = (e) => finish(`Fast-forward failed (${e.message || 'error'}); the world is unchanged.`);
+    worker.postMessage({ save: serializeWorld(app.world), cond });
+  },
+  stopFastForward() { app.ff?.postMessage({ type: 'stop' }); },
   // Returns an error message, or null on success. A failed load leaves the save untouched.
   async loadRun(id, name) {
     const r = await loadRun(id);
@@ -60,6 +78,7 @@ app.ui.controls = mountControls(ui, app);
 app.ui.inspector = mountInspector(ui, app);
 app.ui.godmode = mountGodMode(ui, app, view, canvas);
 app.ui.runs = mountRuns(ui, app);
+app.ui.ff = mountFastForward(ui, app);
 if (bootError) app.ui.runs.toast(`Couldn’t resume last run (${bootError}); started a new one.`);
 if (!runs.ok) app.onStorageError(runs.error);
 

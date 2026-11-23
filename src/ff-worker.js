@@ -1,0 +1,22 @@
+// Fast-forward worker: runs a deserialized world with no rendering until a stop condition, then hands it back.
+import { deserializeWorld, serializeWorld } from './sim/serialize.js';
+import { runUntil } from './sim/fastforward.js';
+
+let stopped = false;
+self.onmessage = async ({ data }) => {
+  if (data.type === 'stop') { stopped = true; return; }
+  const world = deserializeWorld(data.save), cond = { realMinutes: 10, ...data.cond };
+  const startReal = performance.now(), startTime = world.time, log = [];
+  let result = null, lastPost = 0;
+  while (!result && !stopped) {
+    const chunkStart = performance.now();
+    while (!result && performance.now() - chunkStart < 100) result = runUntil(world, cond, { maxSteps: 10, startReal, startTime, log });
+    const now = performance.now();
+    if (now - lastPost > 250) {
+      lastPost = now;
+      self.postMessage({ type: 'progress', time: world.time, pop: world.creatures.length, speed: (world.time - startTime) / ((now - startReal) / 1000), log: log.slice(-4) });
+    }
+    await new Promise((r) => setTimeout(r, 0)); // let a Stop message in
+  }
+  self.postMessage({ type: 'done', reason: result ? result.reason : 'stopped', detail: result ? result.detail : 'stopped by you', save: serializeWorld(world) });
+};

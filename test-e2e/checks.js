@@ -387,3 +387,19 @@ checks['body tab shows endurance and dexterity'] = async ({ page, base, assert }
   const legend = await page.textContent('#charts .legend');
   for (const k of ['Endurance', 'Dexterity']) assert.ok(legend.includes(k), k);
 };
+
+checks['fast-forward runs in a worker and hands the world back'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const t0 = await page.evaluate(() => window.__world.time);
+  await page.click('#btn-ff');
+  await page.fill('#ff input[name="simMinutes"]', '0.5');
+  await page.fill('#ff input[name="realMinutes"]', '2');
+  await page.click('#ff button.primary');
+  await page.waitForSelector('#ff-progress', { state: 'visible', timeout: 5000 });
+  await page.waitForSelector('#ff-progress', { state: 'hidden', timeout: 120000 });
+  const r = await page.evaluate(() => ({ time: window.__world.time, paused: window.__app.paused, toast: document.getElementById('toast').textContent }));
+  assert.ok(r.time >= t0 + 29.9, `time ${r.time}`);
+  assert.equal(r.paused, false);
+  assert.match(r.toast, /sim-minutes/);
+  assert.deepEqual(errors, []);
+};
