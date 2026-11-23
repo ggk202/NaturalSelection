@@ -7,7 +7,7 @@ import { measure } from '../../bench/measure.mjs';
 const base = JSON.parse(readFileSync(new URL('../../bench/baseline-v2-mlp.json', import.meta.url)));
 const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
-test('2a brains are at least as capable as the v2 baseline', () => {
+test('evolvable brains are at least as capable as the v2 baseline', () => {
   const now = [1, 2, 3].map(measure);
   const b = [1, 2, 3].map((s) => base[s]);
   // Total food eaten per minute (population × per-capita): per-capita alone drops when the world fills up.
