@@ -13,6 +13,7 @@ const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 export const DEFAULT_SETTINGS = {
   seed: 1, worldSize: 100, initialCreatures: 60, maxCreatures: 400,
   foodRate: 4, maxFood: 300, foodEnergy: 3, mutationRate: 0.08, dt: 1 / 20,
+  predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
 
@@ -40,6 +41,8 @@ export class World {
     this.nextSpeciesAt = 0;
     this.nextId = 1;
     this.elite = []; // top parents by child count: { genome, children }
+    this.eliteCarn = []; // top carnivores by kills + children
+    this.carnivoresSeen = false;
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
     this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
@@ -54,10 +57,11 @@ export class World {
     const c = {
       id: this.nextId++, parentId: parent ? parent.id : null, generation: parent ? parent.generation + 1 : 0,
       genome, stats, x: this.wrap(x), z: this.wrap(z), heading: this.rng.range(0, TAU),
-      energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0,
+      energy: stats.maxEnergy * 0.5, age: 0, alive: true, children: 0, kills: 0,
       lastOutputs: new Float32Array(OUTPUTS.length),
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
+    if (genome.body.diet > 0.5) this.carnivoresSeen = true;
     this.creatures.push(c);
     return c;
   }
@@ -237,7 +241,8 @@ export class World {
     c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.8 * dmg * c.stats.digestMeat); // feeding while biting
     if (target.energy > 0) return;
     target.alive = false;
-    c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.6 * target.stats.maxEnergy * c.stats.digestMeat);
+    c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.25 * target.stats.maxEnergy * c.stats.digestMeat); // kept small: bigger bonuses create energy from nothing via cannibalism
+    c.kills++;
     this.emit({ type: 'kill', killerId: c.id, victimId: target.id });
     this.emit({ type: 'death', id: target.id, cause: 'killed' });
     this.recordElite(target);
@@ -283,14 +288,17 @@ export class World {
     const W = this.settings.worldSize;
     for (let i = 0; i < n; i++) {
       const src = this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng);
-      const g = cloneGenome(src);
-      g.body.diet = 0.9; g.body.mouth = Math.max(g.body.mouth, 1.2);
-      this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
+      this.spawn(predatorGenome(src), this.rng.range(0, W), this.rng.range(0, W));
     }
     this.emit({ type: 'god', action: 'seedPredators', n });
   }
 
   recordElite(c) {
+    if (c.genome.body.diet > 0.5 && c.kills + c.children > 0) {
+      this.eliteCarn.push({ genome: c.genome, children: c.kills * 2 + c.children });
+      this.eliteCarn.sort((a, b) => b.children - a.children);
+      if (this.eliteCarn.length > 10) this.eliteCarn.length = 10;
+    }
     if (c.children === 0) return;
     this.elite.push({ genome: c.genome, children: c.children });
     this.elite.sort((a, b) => b.children - a.children);
@@ -299,6 +307,17 @@ export class World {
 
   respawn() {
     const s = this.settings, W = s.worldSize;
+    if (this.carnivoresSeen && s.predatorMin > 0) {
+      let carn = 0;
+      for (const c of this.creatures) if (c.genome.body.diet > 0.5) carn++;
+      for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
+        const g = this.eliteCarn.length
+          ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng)
+          : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng));
+        g.body.diet = Math.max(g.body.diet, 0.55);
+        this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
+      }
+    }
     while (this.creatures.length < s.respawnMin) {
       const g = this.elite.length && this.rng.next() < 0.8
         ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng)
@@ -306,6 +325,12 @@ export class World {
       this.spawn(g, this.rng.range(0, W), this.rng.range(0, W));
     }
   }
+}
+
+function predatorGenome(src) {
+  const g = cloneGenome(src);
+  g.body.diet = 0.9; g.body.mouth = Math.max(g.body.mouth, 1.2);
+  return g;
 }
 
 export function angleDiff(a, b) {

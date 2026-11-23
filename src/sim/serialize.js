@@ -17,6 +17,8 @@ export function serializeWorld(w) {
     food: w.food.map((f) => ({ ...f })),
     hazards: w.env.hazards.map((h) => ({ ...h })),
     elite: w.elite.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
+    eliteCarn: w.eliteCarn.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
+    carnivoresSeen: w.carnivoresSeen,
     tracker: {
       threshold: t.threshold, nextId: t.nextId, nextCheckpointId: t.nextCheckpointId,
       seenLegs: t.seenLegs ? [...t.seenLegs] : null, firstCarnivores: t.firstCarnivores,
@@ -42,6 +44,8 @@ export function deserializeWorld(o) {
   w.env.hazards = o.hazards.map((h) => ({ ...h }));
   w.rng.setState(o.rng); // after Environment, which consumes rng
   w.elite = o.elite.map((e) => ({ children: e.children, genome: j2g(e.genome) }));
+  w.eliteCarn = o.eliteCarn.map((e) => ({ children: e.children, genome: j2g(e.genome) }));
+  w.carnivoresSeen = o.carnivoresSeen;
   const t = w.tracker, ot = o.tracker;
   Object.assign(t, { threshold: ot.threshold, nextId: ot.nextId, nextCheckpointId: ot.nextCheckpointId, firstCarnivores: ot.firstCarnivores });
   t.seenLegs = ot.seenLegs ? new Set(ot.seenLegs) : null;
