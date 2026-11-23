@@ -34,6 +34,12 @@ const BODY_SENSE = (name) => /^(osc|joint|touch)|^(upY|pitch|roll|fwdSpeed|stami
 export const usableInputs = (rays, physical = false) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i),
   ...SCALARS.flatMap((name, i) => (SOCIAL.has(name) || (!physical && BODY_SENSE(name)) ? [] : [RAY_CAP * 3 + i]))];
 export const JOINT_OUT = OUTPUTS.indexOf('j0');
+// What new links may use: kinematic bodies ignore body senses and joints; physical ones ignore turn/throttle and joints they lack.
+export function linkable(rays, physical, joints) {
+  const social = SCALARS.flatMap((name, i) => (SOCIAL.has(name) ? [RAY_CAP * 3 + i] : []));
+  const outputs = physical ? [2, 3, 4, 5, 6, ...Array.from({ length: Math.min(joints, MAX_JOINTS) }, (_, j) => JOINT_OUT + j)] : [0, 1, 2, 3, 4, 5, 6];
+  return { inputs: new Set([...usableInputs(rays, physical), ...social]), outputs: new Set(outputs) };
+}
 
 // outputs: output indices founders may wire (default: turn/throttle/attack/reproduce).
 export function createBrain(rng, links = rng.int(4, 8), inputs = null, outputs = null) {
@@ -51,7 +57,8 @@ export function createBrain(rng, links = rng.int(4, 8), inputs = null, outputs =
 export const cloneBrain = (b) => ({ nodes: b.nodes.map((n) => ({ ...n })), conns: b.conns.map((c) => ({ ...c })), lr: b.lr ?? 0 });
 
 // rate: the world mutation rate (0.08 default). probs overrides per-birth structural probabilities (tests).
-export function mutateBrain(b, rate, rng, nextId, probs = null) {
+// allowed (optional): { inputs: Set, outputs: Set } of output indices — new links only use what the body can use.
+export function mutateBrain(b, rate, rng, nextId, probs = null, allowed = null) {
   const m = cloneBrain(b), scale = rate / 0.08;
   const p = probs ? { addConn: 0, addNode: 0, toggle: 0, removeNode: 0, jitter: rate, ...probs }
     : { ...Object.fromEntries(Object.entries(BASE_RATES).map(([k, v]) => [k, v * scale])), jitter: rate };
@@ -66,8 +73,9 @@ export function mutateBrain(b, rate, rng, nextId, probs = null) {
     if (n.type === 'hid') n.tau = Math.min(20, Math.max(1, n.tau * Math.exp(rng.gauss() * 0.3)));
   }
   if (rng.next() < p.addConn) {
-    const from = m.nodes[rng.int(0, m.nodes.length - 1)].id;
-    const targets = m.nodes.filter((n) => n.type !== 'in');
+    const ok = (n) => !allowed || n.type === 'hid' || (n.type === 'in' ? allowed.inputs.has(n.id) : allowed.outputs.has(n.id - N_IN));
+    const sources = m.nodes.filter(ok), from = sources[rng.int(0, sources.length - 1)].id;
+    const targets = m.nodes.filter((n) => n.type !== 'in' && ok(n));
     const to = targets[rng.int(0, targets.length - 1)].id;
     const existing = m.conns.find((c) => c.from === from && c.to === to);
     if (existing) existing.on = true; else m.conns.push({ from, to, w: rng.gauss() * 0.5, on: true, p: 0 });

@@ -76,6 +76,7 @@ export function randomBodyPlan(rng) {
     n.size = n.size.map((s) => s * rng.range(0.8, 1.25));
     if (n.eyes) { n.eyes = rng.int(1, 4); n.eyeSize = rng.range(0.4, 1.2); n.mouth = rng.range(0.6, 1.2); n.antennae = rng.int(0, 2); }
   }
+  anatomize(p);
   // Limbs (elongated, organ-free nodes) get 0–3 toes: feet for walking, grip for climbing, webbing for swimming.
   const limbs = p.nodes.filter((n) => !n.eyes && !n.mouth && n.size[0] >= 2 * Math.max(n.size[1], n.size[2]));
   if (limbs.length) {
@@ -101,14 +102,18 @@ export function expandBody(plan, maxParts = 24) {
     for (let ei = 0; ei < pn.edges.length; ei++) {
       const e = pn.edges[ei], key = `${parent.node}:${ei}`, c = counts[key] || 0;
       if (c >= e.recur || !plan.nodes[e.to]) continue;
-      const sides = e.symmetric && !(FACES[e.face][2] === 0 && Math.abs(e.v) < 1e-6) ? [false, true] : [false];
-      for (const flip of sides) {
-        if (parts.length >= maxParts) return;
-        const m = mirrored !== flip;
-        const ci = parts.length;
+      const pair = e.symmetric && !(FACES[e.face][2] === 0 && Math.abs(e.v) < 1e-6);
+      const build = (flip) => {
+        const m = mirrored !== flip, ci = parts.length;
         parts.push(attach(plan.nodes[e.to], e.to, parent, pi, e, m));
         visit(ci, { ...counts, [key]: c + 1 }, m);
-      }
+      };
+      if (parts.length >= maxParts) return;
+      const start = parts.length;
+      build(false);
+      // Never build half of a mirrored pair: if the mirror side (same size) won't fit, roll this side back.
+      if (pair && parts.length + (parts.length - start) > maxParts) { parts.length = start; continue; }
+      if (pair) build(true);
     }
   };
   visit(0, {}, false);

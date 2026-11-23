@@ -24,3 +24,13 @@ test('speed scales steps', () => {
   for (let i = 0; i < 60; i++) n += s(1 / 60, 4, 0.05);
   assert.ok(n >= 79 && n <= 80, `${n}`);
 });
+
+test('runSteps stops at the time budget', async () => {
+  const { runSteps } = await import('../src/loop.js');
+  let t = 0, steps = 0;
+  const world = { step: () => { steps++; t += 5; } };
+  assert.equal(runSteps(world, 64, 12, () => t), 3);
+  assert.equal(steps, 3);
+  steps = 0;
+  assert.equal(runSteps(world, 2, 12, () => t), 2);
+});

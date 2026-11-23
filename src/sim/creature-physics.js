@@ -120,8 +120,10 @@ function applyForces(world) {
       b.resetForces(false);
       b.resetTorques(false);
       if (i === 0 && c.stats.balance > 0) { // balance reflex: turn the torso's up axis back toward world up, damp tipping
-        const up = qrot(arr(b.rotation()), [0, 1, 0]), k = BALANCE * c.stats.balance * b.mass();
-        const d = 2 * Math.sqrt(BALANCE) * c.stats.balance * b.mass();
+        // Gains are bounded by the torso's inertia per substep, or small torsos overshoot and jitter.
+        const I = b.principalInertia(), Imin = Math.min(I.x, I.z), h = world.settings.dt / SUBSTEPS;
+        const up = qrot(arr(b.rotation()), [0, 1, 0]), k = Math.min(BALANCE * c.stats.balance * b.mass(), 0.25 * Imin / (h * h));
+        const d = Math.min(2 * Math.sqrt(BALANCE) * c.stats.balance * b.mass(), 0.5 * Imin / h);
         b.addTorque({ x: -k * up[2] - d * av.x, y: 0, z: k * up[0] - d * av.z }, true); // k·(up × ŷ), damped
       }
       b.setLinearDamping(wet ? 2 : 0.1);
@@ -166,6 +168,6 @@ export function stepPhysics(world) {
 export function headSteady(world, c) {
   if (!c.ph) return true;
   const b = world.physics.world.getRigidBody(c.ph.bodies[c.ph.head]), w = b.angvel();
-  const up = qrot(qmul(arr(b.rotation()), c.parts[c.ph.head].rot), [0, 1, 0])[1];
+  const up = qrot(arr(b.rotation()), [0, 1, 0])[1]; // bodies rest upright (yaw only), whatever the head part's shape
   return Math.hypot(w.x, w.y, w.z) < 3 && up > 0.3;
 }

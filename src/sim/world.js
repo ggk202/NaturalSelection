@@ -236,7 +236,8 @@ export class World {
     const s = this.settings;
     if (this.creatures.length >= s.maxCreatures) return;
     if (c.energy <= traitsOf(c.genome).reproThreshold * c.stats.maxEnergy) return;
-    const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng, this.nodeIds), c.x + this.rng.range(-1, 1), c.z + this.rng.range(-1, 1), c);
+    const away = this.physics ? 1.5 + traitsOf(c.genome).size * 1.5 : 1, ang = this.rng.range(0, TAU); // physical: don't spawn inside the parent
+    const child = this.spawn(mutate(c.genome, s.mutationRate, this.rng, this.nodeIds, { physical: !!this.physics }), c.x + Math.cos(ang) * this.rng.range(0, away), c.z + Math.sin(ang) * this.rng.range(0, away), c);
     c.normalCost += c.energy / 2; // giving birth is not a punishment
     c.energy /= 2;
     c.children++;
@@ -467,7 +468,7 @@ export class World {
   mutateCreature(id, rate = 0.5) {
     const c = this.find(id);
     if (!c) return;
-    c.genome = mutate(c.genome, rate, this.rng, this.nodeIds);
+    c.genome = mutate(c.genome, rate, this.rng, this.nodeIds, { physical: !!this.physics });
     c.stats = deriveStats(c.genome.body);
     c.brainState = newState(c.genome.brain);
     c.brainPre = newState(c.genome.brain);
@@ -508,7 +509,7 @@ export class World {
       for (const c of this.creatures) if (traitsOf(c.genome).diet > 0.5) carn++;
       for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
         const g = this.eliteCarn.length
-          ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
+          ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds, { physical: !!this.physics })
           : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng, !!this.physics));
         g.body.diet = Math.max(g.body.diet ?? 0, 0.55);
         const p = this.randomLandPoint();
@@ -517,7 +518,7 @@ export class World {
     }
     while (this.creatures.length < s.respawnMin) {
       const g = this.elite.length && this.rng.next() < 0.8
-        ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
+        ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds, { physical: !!this.physics })
         : randomGenome(this.rng, !!this.physics);
       const p = this.randomLandPoint();
       this.spawn(g, p.x, p.z);

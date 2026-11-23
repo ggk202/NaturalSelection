@@ -4,7 +4,7 @@
 import { expandBody } from './bodyplan.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
-export const MAX_PARTS = 32;
+export const MAX_PARTS = 25; // same cap as physical bodies (24 joints)
 const ROOT_VOL = 0.36; // root box volume of a size-1 body built by planFromParams
 
 // Old-style parameter body -> body plan (torso with organs, legs in mirrored pairs, toes on legs).

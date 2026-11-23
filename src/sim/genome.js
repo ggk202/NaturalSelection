@@ -1,4 +1,4 @@
-import { createBrain, mutateBrain, cloneBrain, brainDistance, usableInputs, INPUT_NAMES, OUTPUTS, N_IN, JOINT_OUT, MAX_JOINTS } from './neat.js';
+import { createBrain, mutateBrain, cloneBrain, brainDistance, usableInputs, linkable, INPUT_NAMES, OUTPUTS, N_IN, JOINT_OUT, MAX_JOINTS } from './neat.js';
 import { randomBodyPlan, mutateBodyPlan, cloneBodyPlan, bodyPlanDistance, expandBody } from './bodyplan.js';
 import { paramsFromPlan } from './body.js';
 
@@ -57,12 +57,15 @@ export function cloneGenome(g) {
 }
 
 // nextNodeId supplies hidden-neuron ids; the world passes its own counter (tests may omit it).
-export function mutate(g, rate, rng, nextNodeId = localIds()) {
+// opts.physical: restrict new brain links to what this body can use (joints, body senses).
+export function mutate(g, rate, rng, nextNodeId = localIds(), opts = null) {
   const body = mutateBodyPlan(g.body, rate, rng);
   for (const [k, [lo, hi]] of Object.entries(TRAIT_GENES)) {
     if (rng.next() < rate) body[k] = clamp((body[k] ?? (lo + hi) / 2) + rng.gauss() * 0.1 * (hi - lo), lo, hi);
   }
-  return { body, brain: mutateBrain(g.brain, rate, rng, nextNodeId) };
+  const t = { body };
+  const allowed = opts ? linkable(1 + 2 * traitsOf(t).eyes, opts.physical, expandBody(body, MAX_JOINTS + 1).length - 1) : null;
+  return { body, brain: mutateBrain(g.brain, rate, rng, nextNodeId, null, allowed) };
 }
 
 export function genomeDistance(a, b) {

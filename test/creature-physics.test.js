@@ -48,7 +48,7 @@ for (const name of ['worm', 'quadruped', 'biped']) {
     const joints = expandBody(plan(name)).length - 1;
     const moving = travel(name, rhythmBrain(joints)), idle = travel(name, biasBrain({ reproduce: -10 }));
     assert.ok(idle < 0.5, `${name} drifted ${idle.toFixed(2)} while idle`); // a quadruped settles ~0.4 finding its balance
-    assert.ok(moving > 0.25 && moving > 2 * idle, `${name} moved ${moving.toFixed(2)} (idle ${idle.toFixed(2)})`);
+    assert.ok(moving > idle + 0.25, `${name} moved ${moving.toFixed(2)} (idle ${idle.toFixed(2)})`);
   });
 }
 

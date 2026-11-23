@@ -121,3 +121,44 @@ test('balance is a gene with an energy cost', async () => {
   for (let i = 0; i < 200; i++) g = mutate(g, 0.5, r);
   assert.ok(traitsOf(g).balance >= 0 && traitsOf(g).balance <= 1);
 });
+
+test('balance reflex is stable on a small biped torso', () => {
+  const w = new World(P);
+  const p = { ...plan('biped'), balance: 1 };
+  p.nodes[0].size = p.nodes[0].size.map((s) => s * 0.6);
+  const c = w.spawn({ body: p, brain: still() }, 50, 50);
+  for (let i = 0; i < 120; i++) { c.energy = 9; w.step(); }
+  const a = w.physics.world.getRigidBody(c.ph.bodies[0]).angvel();
+  assert.ok(Math.hypot(a.x, a.y, a.z) < 1, `root spin ${Math.hypot(a.x, a.y, a.z).toFixed(2)}`);
+});
+
+test('big symmetric bodies are never built lopsided, and stats use the same part cap', async () => {
+  const { MAX_PARTS } = await import('../src/sim/body.js');
+  const { PHYS_PARTS } = await import('../src/sim/creature-physics.js');
+  assert.equal(MAX_PARTS, PHYS_PARTS);
+  const p = plan('quadruped');
+  p.nodes[2].edges = [{ to: 2, face: 0, u: 0, v: 0, yaw: 0, pitch: 0, axis: 'z', lo: -0.5, hi: 0.5, strength: 1, recur: 4, symmetric: false }]; // long leg chains
+  p.nodes[0].edges.push({ ...p.nodes[0].edges[1], u: 0 }, { ...p.nodes[0].edges[1], u: 0.3 }); // more mirrored legs
+  const parts = expandBody(p, PHYS_PARTS);
+  assert.ok(parts.length <= PHYS_PARTS);
+  const legRoots = parts.filter((q) => q.parent === 0 && q.node === 2);
+  assert.equal(legRoots.filter((q) => q.mirror).length, legRoots.filter((q) => !q.mirror).length, 'mirrored legs come in pairs');
+});
+
+// Splitting an old link keeps its old target, so only links to brand-new targets are judged.
+test('new brain links only use outputs and inputs the body can use', async () => {
+  const { mutate } = await import('../src/sim/genome.js');
+  const { N_IN, JOINT_OUT, INPUT_NAMES } = await import('../src/sim/neat.js');
+  const bodySense = new Set(INPUT_NAMES.flatMap((n, i) => (/^(osc|joint|touch)|^(upY|pitch|roll|fwdSpeed|stamina)$/.test(n) ? [i] : [])));
+  const r = createRng(5);
+  let g = { body: plan('worm'), brain: biasBrain() };
+  for (let i = 0; i < 300; i++) g = mutate(g, 0.5, r, undefined, { physical: false });
+  for (const k of g.brain.conns) { assert.ok(k.to < N_IN + JOINT_OUT || k.to >= 1000, `kinematic link to joint ${k.to}`); assert.ok(!bodySense.has(k.from), `kinematic link from body sense ${INPUT_NAMES[k.from]}`); }
+  let h = { body: plan('worm'), brain: biasBrain() };
+  for (let i = 0; i < 300; i++) { // each new link must fit the body it was added to (bodies also mutate)
+    const before = new Set(h.brain.conns.map((k) => `${k.from}>${k.to}`)), oldTargets = new Set(h.brain.conns.map((k) => k.to));
+    h = mutate(h, 0.5, r, undefined, { physical: true });
+    const joints = expandBody(h.body, 25).length - 1;
+    for (const k of h.brain.conns) if (!before.has(`${k.from}>${k.to}`) && !oldTargets.has(k.to) && k.to >= N_IN + JOINT_OUT && k.to < 1000) assert.ok(k.to - N_IN - JOINT_OUT < joints, `link to missing joint ${k.to - N_IN - JOINT_OUT} of ${joints}`);
+  }
+});
