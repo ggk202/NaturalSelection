@@ -76,7 +76,7 @@ export const TABS = {
   biomes: { label: 'Biomes', keys: ['plains', 'forest', 'wetland', 'lake', 'mountain', 'desert'].map((b, i) => ({
     get: (p) => (p.biomes ? p.biomes[b] : 0), label: b[0].toUpperCase() + b.slice(1), color: SERIES[i],
   })) },
-  behavior: { label: 'Behaviour', keys: ['wanderer', 'forager', 'hunter', 'ambusher', 'fleer', 'idler'].map((l, i) => ({
+  behavior: { label: 'Behaviour', keys: ['wanderer', 'forager', 'hunter', 'ambusher', 'homebody', 'patroller'].map((l, i) => ({
     get: (p) => p.labels[l] || 0, label: l[0].toUpperCase() + l.slice(1), color: SERIES[i],
   })) },
 };

@@ -227,6 +227,10 @@ export class World {
       const v = throttle * st.speed * this.terrainSpeed(c);
       c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
       c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
+      const ac = c.actionCounters;
+      if (c.winX === undefined) { c.winX = c.x; c.winZ = c.z; }
+      ac.path += Math.abs(v) * dt;
+      ac.maxDist = Math.max(ac.maxDist, Math.hypot(this.delta(c.winX, c.x), this.delta(c.winZ, c.z)));
       c.normalCost = (st.upkeep + c.brainUpkeep + 0.01 * v * c.genome.body.size) * dt;
       c.energy -= c.normalCost + this.envCost(c, inp) * dt;
       c.actionCounters.steps++;
@@ -259,7 +263,7 @@ export class World {
     const t = this.time + 1e-9;
     if (t >= this.nextLabelAt) {
       this.nextLabelAt += LABEL_WINDOW;
-      for (const c of this.creatures) { c.label = labelOf(c.actionCounters) ?? c.label; c.actionCounters = emptyCounters(); }
+      for (const c of this.creatures) { c.label = labelOf(c.actionCounters) ?? c.label; c.actionCounters = emptyCounters(); c.winX = c.x; c.winZ = c.z; }
     }
     if (t >= this.nextFadeAt) {
       this.nextFadeAt += 5;
