@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../src/sim/world.js';
 import { TEMPLATES, expandBody, mutateBodyPlan } from '../src/sim/bodyplan.js';
-import { N_IN } from '../src/sim/neat.js';
+import { N_IN, INPUT_NAMES, OUTPUTS } from '../src/sim/neat.js';
 import { createRng } from '../src/sim/rng.js';
 import { biasBrain } from './helpers.js';
 import { deriveStats } from '../src/sim/body.js';
@@ -15,7 +15,7 @@ const spin = (w, c, rate) => { for (const b of bodies(w, c)) b.setAngvel({ x: 0,
 
 test('roller detector flags spinning creatures, not still ones', () => {
   const w = new World(P);
-  const a = w.spawn({ body: plan('quadruped'), brain: still() }, 30, 50), b = w.spawn({ body: plan('quadruped'), brain: still() }, 70, 50);
+  const a = w.spawn({ body: { ...plan('quadruped'), balance: 0 }, brain: still() }, 30, 50), b = w.spawn({ body: plan('quadruped'), brain: still() }, 70, 50); // no reflex fighting the spin
   for (let i = 0; i < 60; i++) { spin(w, a, 8); a.energy = b.energy = 9; w.step(); }
   assert.ok(a.rolling, `spin ${a.spin}`);
   assert.ok(!b.rolling, `spin ${b.spin} upright ${b.upright}`);
@@ -92,4 +92,32 @@ test('founder walkers stand: an idle quadruped and biped stay upright for 10 s',
     for (let i = 0; i < 200; i++) { c.energy = 9; w.step(); if (i > 40) low = Math.min(low, c.upright); }
     assert.ok(low > 0.7, `${name} upright fell to ${low.toFixed(2)}`);
   }
+});
+
+test('the balance reflex keeps a rhythm-driven biped upright', () => {
+  const run = (balance) => {
+    const w = new World(P);
+    const p = { ...plan('biped'), balance };
+    const b = biasBrain({ reproduce: -10 });
+    for (let j = 0; j < expandBody(p).length - 1; j++) b.conns.push({ from: INPUT_NAMES.indexOf(j % 2 ? 'osc1c' : 'osc1s'), to: N_IN + OUTPUTS.indexOf(`j${j}`), w: 3, on: true, p: 0 });
+    const c = w.spawn({ body: p, brain: b }, 50, 50);
+    let low = 1;
+    for (let i = 0; i < 400; i++) { c.energy = 9; w.step(); if (i > 40) low = Math.min(low, c.upright); }
+    return low;
+  };
+  const without = run(0), withReflex = run(0.8);
+  assert.ok(withReflex > 0.7, `balanced biped upright fell to ${withReflex.toFixed(2)}`);
+  assert.ok(withReflex > without, `reflex ${withReflex.toFixed(2)} vs none ${without.toFixed(2)}`);
+});
+
+test('balance is a gene with an energy cost', async () => {
+  const { randomGenome, mutate, traitsOf } = await import('../src/sim/genome.js');
+  const r = createRng(3);
+  for (let i = 0; i < 50; i++) { const b = randomGenome(r).body.balance; assert.ok(b >= 0.4 && b <= 0.8, `${b}`); }
+  const lo = { ...plan('quadruped'), balance: 0 }, hi = { ...plan('quadruped'), balance: 1 };
+  assert.ok(deriveStats(hi).upkeep > deriveStats(lo).upkeep + 0.01);
+  assert.equal(deriveStats(hi).balance, 1);
+  let g = { body: hi, brain: biasBrain() };
+  for (let i = 0; i < 200; i++) g = mutate(g, 0.5, r);
+  assert.ok(traitsOf(g).balance >= 0 && traitsOf(g).balance <= 1);
 });

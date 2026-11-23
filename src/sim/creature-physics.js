@@ -12,6 +12,7 @@ const MOTOR = 1000; // motor stiffness per unit joint strength (acceleration-bas
 // shortcut: 15 collision groups, so ~1 in 15 creature pairs pass through each other; fine at current densities.
 const groupsOf = (id) => { const g = 1 + (id % 15); return ((1 << g) << 16) | (0xffff & ~(1 << g)); };
 const MAX_LIN = 12, MAX_ANG = 10; // speed caps: no free-energy launches or spins
+const BALANCE = 40; // righting torque per unit balance gene and mass, plus matching damping
 const GRIP = 40; // 1/s sideways drag on touching parts; keep GRIP·substep < 1 for stability
 const v3 = (a) => ({ x: a[0], y: a[1], z: a[2] });
 const q4 = (q) => ({ x: q[0], y: q[1], z: q[2], w: q[3] });
@@ -117,6 +118,12 @@ function applyForces(world) {
       if (as > MAX_ANG) b.setAngvel({ x: av.x * MAX_ANG / as, y: av.y * MAX_ANG / as, z: av.z * MAX_ANG / as }, true);
       const touching = p.y - Math.max(...s) / 2 - t.heightAt(p.x, p.z) < 0.15;
       b.resetForces(false);
+      b.resetTorques(false);
+      if (i === 0 && c.stats.balance > 0) { // balance reflex: turn the torso's up axis back toward world up, damp tipping
+        const up = qrot(arr(b.rotation()), [0, 1, 0]), k = BALANCE * c.stats.balance * b.mass();
+        const d = 2 * Math.sqrt(BALANCE) * c.stats.balance * b.mass();
+        b.addTorque({ x: -k * up[2] - d * av.x, y: 0, z: k * up[0] - d * av.z }, true); // k·(up × ŷ), damped
+      }
       b.setLinearDamping(wet ? 2 : 0.1);
       b.setAngularDamping(touching ? 4 : 0.5); // rolling resistance on the ground
       if (wet) b.addForce({ x: 0, y: 1.2 * 9.81 * s[0] * s[1] * s[2] * density(part), z: 0 }, true);
