@@ -1,4 +1,4 @@
-import { createBrain, mutateBrain, cloneBrain, brainDistance } from './neat.js';
+import { createBrain, mutateBrain, cloneBrain, brainDistance, usableInputs } from './neat.js';
 
 export const GENES = [
   { key: 'size', min: 0.5, max: 2 },
@@ -22,7 +22,7 @@ export function randomGenome(rng) {
   for (const { key, min, max, int } of GENES) body[key] = int ? rng.int(min, max) : rng.range(min, max);
   // Founders start as herbivores; carnivory must evolve (or be seeded).
   body.diet = rng.range(0, 0.2);
-  return { body, brain: createBrain(rng) };
+  return { body, brain: createBrain(rng, rng.int(4, 8), usableInputs(1 + 2 * body.eyes)) };
 }
 
 export function cloneGenome(g) {

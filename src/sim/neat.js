@@ -1,6 +1,6 @@
 // Evolvable recurrent brains (NEAT-style structure growth, asexual so no innovation table).
 // Node ids: inputs 0..N_IN-1, outputs N_IN..N_IN+N_OUT-1, hidden from a world-level counter.
-export const RAY_CAP = 15; // max rays any creature can have (eyes 0..6 -> 1..13 rays)
+export const RAY_CAP = 13; // max rays any creature can have (eyes 0..6 -> 1..13 rays)
 export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
 export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
@@ -18,10 +18,13 @@ function ioNodes() {
   return nodes;
 }
 
-export function createBrain(rng, links = rng.int(8, 16)) {
+// Input ids a creature with `rays` rays can actually use (ray slots are centre-out, so slots < rays).
+export const usableInputs = (rays) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i), ...SCALARS.map((_, i) => RAY_CAP * 3 + i)];
+
+export function createBrain(rng, links = rng.int(4, 8), inputs = null) {
   const conns = [], seen = new Set();
   while (conns.length < links) {
-    const from = rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
+    const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
     if (seen.has(key)) continue;
     seen.add(key);
     conns.push({ from, to, w: rng.gauss(), on: true });
@@ -67,11 +70,11 @@ export function mutateBrain(b, rate, rng, nextId, probs = null) {
   return m;
 }
 
-// Enabled connections keyed by from*65536+to, cached per brain (brains are immutable once built).
+// Enabled connections keyed by from*2^32+to, cached per brain (brains are immutable once built).
 const connMaps = new WeakMap();
 function connMap(b) {
   let m = connMaps.get(b);
-  if (!m) { m = new Map(); for (const c of b.conns) if (c.on) m.set(c.from * 65536 + c.to, c.w); connMaps.set(b, m); }
+  if (!m) { m = new Map(); for (const c of b.conns) if (c.on) m.set(c.from * 2 ** 32 + c.to, c.w); connMaps.set(b, m); }
   return m;
 }
 

@@ -15,5 +15,9 @@ test('2a brains are at least as capable as the v2 baseline', () => {
   const nowTotal = avg(now.map((x) => x.meanPop * x.foodPerCreatureMin));
   console.log(`# baseline total food/min ${baseTotal.toFixed(0)}, now ${nowTotal.toFixed(0)}; now ${JSON.stringify(now)}`);
   assert.ok(nowTotal >= 0.8 * baseTotal, 'total food intake fell below 80% of baseline');
-  assert.ok(avg(now.map((x) => x.structure)) > 12, 'brains should grow beyond founder size');
+  now.forEach((x, i) => {
+    assert.ok(x.meanPop >= 2 * 15, `seed ${i + 1} collapsed to the respawn floor (mean pop ${x.meanPop})`);
+    assert.ok(x.meanPop * x.foodPerCreatureMin >= 0.5 * b[i].meanPop * b[i].foodPerCreatureMin, `seed ${i + 1} below half its baseline intake`);
+    assert.ok(x.structure > x.founderStructure, `seed ${i + 1}: brains did not grow (${x.founderStructure} → ${x.structure})`);
+  });
 });

@@ -5,6 +5,17 @@ const TAU = Math.PI * 2;
 const angleDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; else if (d < -Math.PI) d += TAU; return d; };
 const reach = new Float32Array(RAY_CAP), angles = new Float32Array(RAY_CAP);
 
+// Slot of each ray direction, ordered centre-out (0 = straight ahead, then left 1, right 1, left 2, ...),
+// so a ray slot keeps roughly the same direction when the eye count mutates.
+const slotTables = [];
+function slotsFor(n) {
+  if (slotTables[n]) return slotTables[n];
+  const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => Math.abs(a - (n - 1) / 2) - Math.abs(b - (n - 1) / 2) || a - b);
+  const slot = new Int8Array(n);
+  order.forEach((k, s) => (slot[k] = s));
+  return (slotTables[n] = slot);
+}
+
 // Writes 3 channels per ray (food, creature ±, obstacle) as intensities 1 - d/range; unused rays are 0.
 // Forest cells along a ray attenuate visibility (×0.7 each); below 0.25 the ray sees no farther.
 export function castRays(world, c, rays, out, offset) {
@@ -14,7 +25,7 @@ export function castRays(world, c, rays, out, offset) {
   const n = Math.max(1, Math.min(rays, RAY_CAP)), full = st.fov >= TAU - 1e-6;
   const spacing = n === 1 ? st.fov : full ? TAU / n : st.fov / (n - 1);
   const half = n === 1 ? st.fov / 2 : spacing / 2;
-  const blocked = st.swim < 0.5;
+  const blocked = st.swim < 0.5, slot = slotsFor(n);
 
   for (let k = 0; k < n; k++) {
     const a = n === 1 ? 0 : full ? (k - (n - 1) / 2) * spacing : -st.fov / 2 + k * spacing;
@@ -33,12 +44,13 @@ export function castRays(world, c, rays, out, offset) {
     }
     // Standing in water counts as an obstacle at distance 0 for non-swimmers.
     if (blocked && t.biomeAt(c.x, c.z) === BIOME.lake) obstacle = 1;
-    out[offset + k * 3 + 2] = obstacle;
+    out[offset + slot[k] * 3 + 2] = obstacle;
   }
 
   const bucket = (dx, dz) => {
     const ang = angleDiff(Math.atan2(dz, dx), c.heading);
-    if (n === 1) return Math.abs(ang) <= half ? 0 : -1;
+    if (!full && Math.abs(ang) > st.fov / 2) return -1; // edge rays don't see past the field of view
+    if (n === 1) return 0;
     const k = full ? Math.round(ang / spacing + (n - 1) / 2) : Math.round((ang + st.fov / 2) / spacing);
     const kk = ((k % n) + n) % n;
     return Math.abs(angleDiff(ang, angles[kk])) <= half + 1e-9 ? kk : -1;
@@ -52,7 +64,7 @@ export function castRays(world, c, rays, out, offset) {
     if (d2 > maxReach2) return; // cheap reject before the angle maths
     const d = Math.sqrt(d2), k = bucket(dx, dz);
     if (k < 0 || d > reach[k]) return;
-    const v = 1 - d / range, i = offset + k * 3;
+    const v = 1 - d / range, i = offset + slot[k] * 3;
     if (v > out[i]) out[i] = v;
   });
 
@@ -65,7 +77,7 @@ export function castRays(world, c, rays, out, offset) {
     const seenD = t.biomeAt(o.x, o.z) === BIOME.forest ? d / (1 - 0.6 * o.stats.camo) : d;
     const k = bucket(dx, dz);
     if (k < 0 || seenD > reach[k] || seenD > range) return;
-    const v = 1 - d / range, i = offset + k * 3 + 1;
+    const v = 1 - d / range, i = offset + slot[k] * 3 + 1;
     const val = o.stats.attack > st.defense ? -v : o.stats.defense < st.attack ? v : 0.3 * v;
     if (Math.abs(val) > Math.abs(out[i])) out[i] = val;
     if (val < -0.3) threat = true;

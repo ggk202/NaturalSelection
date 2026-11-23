@@ -26,8 +26,8 @@ test('food straight ahead lights the centre ray only', () => {
   w.food.push({ id: 9, x: 53, z: 50, energy: 3, type: 'plant' });
   w.rebuildGrids();
   const out = buf(); castRays(w, c, 5, out, 0);
-  assert.ok(ch(out, 2, 0) > 0.5, `centre ${ch(out, 2, 0)}`);
-  for (const r of [0, 1, 3, 4]) assert.equal(ch(out, r, 0), 0);
+  assert.ok(ch(out, 0, 0) > 0.5, `centre ${ch(out, 0, 0)}`); // slot 0 = straight ahead
+  for (const r of [1, 2, 3, 4]) assert.equal(ch(out, r, 0), 0);
 });
 
 test('prey positive, threat negative', () => {
@@ -36,13 +36,13 @@ test('prey positive, threat negative', () => {
   w.spawn(genome({ size: 0.5, diet: 0 }), 53, 50);
   w.rebuildGrids();
   const out = buf(); castRays(w, c, 5, out, 0);
-  assert.ok(ch(out, 2, 1) > 0.3);
+  assert.ok(ch(out, 0, 1) > 0.3);
   const w2 = new World(quiet);
   const d = w2.spawn(genome({ eyes: 2, size: 0.5, diet: 0 }), 50, 50); d.heading = 0;
   w2.spawn(genome({ size: 2, diet: 1, mouth: 1.5 }), 53, 50);
   w2.rebuildGrids();
   const o2 = buf(); castRays(w2, d, 5, o2, 0);
-  assert.ok(ch(o2, 2, 1) < -0.3);
+  assert.ok(ch(o2, 0, 1) < -0.3);
 });
 
 test('forest hides at distance but not up close', () => {
@@ -51,10 +51,10 @@ test('forest hides at distance but not up close', () => {
   w.food.push({ id: 1, x: p.x + 2, z: p.z, energy: 3, type: 'plant' });
   w.rebuildGrids();
   let out = buf(); castRays(w, c, 13, out, 0);
-  assert.ok(ch(out, 6, 0) > 0, 'near food visible');
+  assert.ok(ch(out, 0, 0) > 0, 'near food visible');
   w.food[0].x = p.x + 14; w.rebuildGrids();
   out = buf(); castRays(w, c, 13, out, 0);
-  assert.equal(ch(out, 6, 0), 0, 'far food hidden by trees');
+  assert.equal(ch(out, 0, 0), 0, 'far food hidden by trees');
 });
 
 test('water is an obstacle for non-swimmers only', () => {
@@ -84,5 +84,26 @@ test('sees across the world wrap', () => {
   w.food.push({ id: 9, x: 1.5, z: 50, energy: 3, type: 'plant' });
   w.rebuildGrids();
   const out = buf(); castRays(w, c, 5, out, 0);
-  assert.ok(ch(out, 2, 0) > 0.5);
+  assert.ok(ch(out, 0, 0) > 0.5);
+});
+
+test('ray slots are ordered centre-out, so slot 0 is always straight ahead', () => {
+  for (const eyes of [1, 2, 3]) {
+    const w = new World(quiet);
+    const c = w.spawn(genome({ eyes, eyeSize: 1 }), 50, 50); c.heading = 0;
+    w.food.push({ id: 9, x: 53, z: 50, energy: 3, type: 'plant' });
+    w.rebuildGrids();
+    const out = buf(); castRays(w, c, 1 + 2 * eyes, out, 0);
+    assert.ok(ch(out, 0, 0) > 0.5, `eyes ${eyes}: slot 0 sees ahead`);
+  }
+});
+
+test('no vision beyond the field of view edge', () => {
+  const w = new World(quiet);
+  const c = w.spawn(genome({ eyes: 1, eyeSize: 1 }), 50, 50); c.heading = 0; // fov 1.3 rad
+  const a = 0.85; // beyond fov/2 = 0.65
+  w.food.push({ id: 9, x: 50 + 3 * Math.cos(a), z: 50 + 3 * Math.sin(a), energy: 3, type: 'plant' });
+  w.rebuildGrids();
+  const out = buf(); castRays(w, c, 3, out, 0);
+  for (let r = 0; r < 3; r++) assert.equal(ch(out, r, 0), 0);
 });
