@@ -3,6 +3,8 @@ import { serializeWorld } from './sim/serialize.js';
 import { createScene } from './render/scene.js';
 import { createStepper } from './loop.js';
 import { saveRun, loadSettings } from './storage.js';
+import { mountControls } from './ui/controls.js';
+import { mountCharts } from './ui/charts.js';
 
 const AUTOSAVE_MS = 60000;
 const canvas = document.getElementById('view');
@@ -28,6 +30,11 @@ window.__view = view;
 
 const saved = await loadSettings();
 app.setWorld(new World(saved.ok && saved.value ? saved.value : {}));
+
+const ui = document.getElementById('ui');
+app.ui = {};
+app.ui.charts = mountCharts(ui, app);
+app.ui.controls = mountControls(ui, app);
 
 const stepper = createStepper();
 let last = performance.now(), lastSave = last, frameMsAvg = 16;
