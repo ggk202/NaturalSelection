@@ -23,6 +23,7 @@ const PRECACHE = [
   './src/sim/environment.js',
   './src/sim/genome.js',
   './src/sim/grid.js',
+  './src/sim/neat.js',
   './src/sim/noise.js',
   './src/sim/rng.js',
   './src/sim/serialize.js',

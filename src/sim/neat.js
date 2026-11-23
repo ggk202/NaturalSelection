@@ -1,0 +1,120 @@
+// Evolvable recurrent brains (NEAT-style structure growth, asexual so no innovation table).
+// Node ids: inputs 0..N_IN-1, outputs N_IN..N_IN+N_OUT-1, hidden from a world-level counter.
+export const RAY_CAP = 15; // max rays any creature can have (eyes 0..6 -> 1..13 rays)
+export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
+export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias'];
+export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
+export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce'];
+export const N_OUT = OUTPUTS.length;
+export const INPUT_NAMES = [...Array.from({ length: RAY_CAP }, (_, r) => RAY_CHANNELS.map((c) => `ray${r}.${c}`)).flat(), ...SCALARS];
+
+const BASE_RATES = { addConn: 0.08, addNode: 0.03, toggle: 0.02, removeNode: 0.01 };
+const isOut = (id) => id >= N_IN && id < N_IN + N_OUT;
+
+function ioNodes() {
+  const nodes = [];
+  for (let i = 0; i < N_IN; i++) nodes.push({ id: i, type: 'in', bias: 0, tau: 1 });
+  for (let o = 0; o < N_OUT; o++) nodes.push({ id: N_IN + o, type: 'out', bias: 0, tau: 1 });
+  return nodes;
+}
+
+export function createBrain(rng, links = rng.int(4, 8)) {
+  const conns = [], seen = new Set();
+  while (conns.length < links) {
+    const from = rng.int(0, N_IN - 1), to = N_IN + rng.int(0, N_OUT - 1), key = `${from}>${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    conns.push({ from, to, w: rng.gauss(), on: true });
+  }
+  return { nodes: ioNodes(), conns };
+}
+
+export const cloneBrain = (b) => ({ nodes: b.nodes.map((n) => ({ ...n })), conns: b.conns.map((c) => ({ ...c })) });
+
+// rate: the world mutation rate (0.08 default). probs overrides per-birth structural probabilities (tests).
+export function mutateBrain(b, rate, rng, nextId, probs = null) {
+  const m = cloneBrain(b), scale = rate / 0.08;
+  const p = probs ? { addConn: 0, addNode: 0, toggle: 0, removeNode: 0, jitter: rate, ...probs }
+    : { ...Object.fromEntries(Object.entries(BASE_RATES).map(([k, v]) => [k, v * scale])), jitter: rate };
+  for (const c of m.conns) if (rng.next() < p.jitter) c.w = rng.next() < 0.1 ? rng.gauss() : c.w + rng.gauss() * 0.3;
+  for (const n of m.nodes) {
+    if (n.type === 'in' || rng.next() >= p.jitter) continue;
+    n.bias += rng.gauss() * 0.2;
+    if (n.type === 'hid') n.tau = Math.min(20, Math.max(1, n.tau * Math.exp(rng.gauss() * 0.3)));
+  }
+  if (rng.next() < p.addConn) {
+    const from = m.nodes[rng.int(0, m.nodes.length - 1)].id;
+    const targets = m.nodes.filter((n) => n.type !== 'in');
+    const to = targets[rng.int(0, targets.length - 1)].id;
+    const existing = m.conns.find((c) => c.from === from && c.to === to);
+    if (existing) existing.on = true; else m.conns.push({ from, to, w: rng.gauss() * 0.5, on: true });
+  }
+  const enabled = m.conns.filter((c) => c.on);
+  if (rng.next() < p.addNode && enabled.length) {
+    // Split a connection; new links start near-neutral (weight 1 in, old weight out).
+    const c = enabled[rng.int(0, enabled.length - 1)], id = nextId();
+    c.on = false;
+    m.nodes.push({ id, type: 'hid', bias: 0, tau: 1 });
+    m.conns.push({ from: c.from, to: id, w: 1, on: true }, { from: id, to: c.to, w: c.w, on: true });
+  }
+  if (rng.next() < p.toggle && m.conns.length) { const c = m.conns[rng.int(0, m.conns.length - 1)]; c.on = !c.on; }
+  const hid = m.nodes.filter((n) => n.type === 'hid');
+  if (rng.next() < p.removeNode && hid.length) {
+    const gone = hid[rng.int(0, hid.length - 1)].id;
+    m.nodes = m.nodes.filter((n) => n.id !== gone);
+    m.conns = m.conns.filter((c) => c.from !== gone && c.to !== gone);
+  }
+  return m;
+}
+
+export function brainDistance(a, b) {
+  const map = new Map(b.conns.filter((c) => c.on).map((c) => [`${c.from}>${c.to}`, c.w]));
+  let match = 0, wd = 0, disjoint = 0;
+  const ca = a.conns.filter((c) => c.on);
+  for (const c of ca) {
+    const k = `${c.from}>${c.to}`;
+    if (map.has(k)) { match++; wd += Math.abs(map.get(k) - c.w); map.delete(k); } else disjoint++;
+  }
+  disjoint += map.size;
+  const n = Math.max(1, ca.length, ca.length + map.size - match);
+  return disjoint / n + 0.4 * (match ? wd / match : 0);
+}
+
+export function brainCost(b) {
+  let hid = 0, on = 0;
+  for (const n of b.nodes) if (n.type === 'hid') hid++;
+  for (const c of b.conns) if (c.on) on++;
+  return 0.002 * hid + 0.0004 * on;
+}
+
+// Compiled form cached per brain object (brains are never mutated in place).
+const compiled = new WeakMap();
+function compile(b) {
+  let k = compiled.get(b);
+  if (k) return k;
+  const index = new Map(b.nodes.map((n, i) => [n.id, i]));
+  const incoming = b.nodes.map(() => []);
+  for (const c of b.conns) if (c.on) incoming[index.get(c.to)].push(index.get(c.from), c.w);
+  const outIdx = Array.from({ length: N_OUT }, (_, o) => index.get(N_IN + o));
+  k = { index, incoming, outIdx, scratch: new Float32Array(b.nodes.length) };
+  compiled.set(b, k);
+  return k;
+}
+
+export const newState = (b) => new Float32Array(b.nodes.length);
+
+// One synchronous update from the previous activations (so loops carry memory), with leaky integration.
+export function runBrain(b, state, inputs, out) {
+  const { incoming, outIdx, scratch } = compile(b), nodes = b.nodes;
+  for (let i = 0; i < N_IN; i++) state[i] = inputs[i]; // input nodes are always ids 0..N_IN-1 at indices 0..N_IN-1
+  scratch.set(state);
+  for (let j = N_IN; j < nodes.length; j++) {
+    const n = nodes[j], inc = incoming[j];
+    let s = n.bias;
+    for (let k = 0; k < inc.length; k += 2) s += inc[k + 1] * scratch[inc[k]];
+    const target = n.type === 'out' && n.id !== N_IN ? 1 / (1 + Math.exp(-s)) : Math.tanh(s);
+    state[j] = n.tau === 1 ? target : state[j] + (target - state[j]) / n.tau;
+  }
+  for (let o = 0; o < N_OUT; o++) out[o] = state[outIdx[o]];
+  return out;
+}
