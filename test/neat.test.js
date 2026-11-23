@@ -9,7 +9,7 @@ const hidden = (b) => b.nodes.filter((n) => n.type === 'hid');
 
 test('layout constants', () => {
   assert.equal(N_IN, 3 * RAY_CAP + SCALARS.length);
-  assert.equal(N_OUT, 7); // turn, throttle, attack, reproduce, call, syllA, syllB
+  assert.equal(N_OUT, 7 + 24); // turn, throttle, attack, reproduce, call, syllA, syllB + 24 joint motors
 });
 
 test('founders are minimal', () => {

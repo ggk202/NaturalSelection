@@ -3,6 +3,8 @@ import { randomGenome, mutate, cloneGenome, relatedness, traitsOf } from './geno
 import { deriveStats } from './body.js';
 import { runBrain, newState, brainCost, initWeights, learn, N_IN, N_OUT, RAY_CAP, SCALARS } from './neat.js';
 import { createMap, inheritMap, remember, recall, fade } from './memory.js';
+import { createPhysics } from './physics.js';
+import { buildBody, removeBody, applyMotors, senseBody, stepPhysics } from './creature-physics.js';
 import { castRays } from './vision.js';
 import { Grid } from './grid.js';
 import { Environment, DEFAULT_ENV } from './environment.js';
@@ -19,7 +21,8 @@ const CALL_COST = 0.05; // energy/s at full loudness (≈ base upkeep; 0.3 starv
 const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
 export const DEFAULT_SETTINGS = {
-  seed: 1, worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
+  seed: 1, locomotion: 'kinematic', // 'physical': jointed bodies driven by muscles (Rapier)
+  worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
   maxRays: 9, mapCell: 10, foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
@@ -63,10 +66,11 @@ export class World {
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
     this.terrain = createTerrain(s);
+    this.physics = s.locomotion === 'physical' ? createPhysics(this.terrain) : null;
     this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
     for (let i = 0; i < s.initialCreatures; i++) {
       const p = this.randomLandPoint();
-      this.spawn(randomGenome(this.rng), p.x, p.z);
+      this.spawn(randomGenome(this.rng, !!this.physics), p.x, p.z);
     }
     for (let i = 0; i < this.foodCap / 2; i++) this.spawnOneFood();
   }
@@ -88,6 +92,7 @@ export class World {
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     if (traitsOf(genome).diet > 0.5) this.carnivoresSeen = true;
+    if (this.physics) buildBody(this, c, c.x, c.z, c.heading);
     this.creatures.push(c);
     return c;
   }
@@ -171,6 +176,7 @@ export class World {
     out[S.familiarity] = recall(m, c.x, c.z, 'visits');
     out[S.kinNear] = c.nearestSeen ? relatedness(c.genome, c.nearestSeen.genome) : 0;
     this.hear(c, out);
+    senseBody(this, c, out, S);
     return out;
   }
 
@@ -251,16 +257,24 @@ export class World {
       c.energyMark = c.energy;
       remember(c.map, c.x, c.z, 'visits', 1 / 127);
       const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs, c.weights, c.brainPre);
-      const st = c.stats, throttle = o[1];
-      c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
-      const v = throttle * st.speed * this.terrainSpeed(c);
-      c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
-      c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
-      const ac = c.actionCounters;
-      if (c.winX === undefined) { c.winX = c.x; c.winZ = c.z; }
-      ac.path += Math.abs(v) * dt;
-      ac.maxDist = Math.max(ac.maxDist, Math.hypot(this.delta(c.winX, c.x), this.delta(c.winZ, c.z)));
-      c.normalCost = (st.upkeep + c.brainUpkeep + 0.01 * v * traitsOf(c.genome).size) * dt;
+      const st = c.stats, ac = c.actionCounters;
+      let throttle, move;
+      if (this.physics) {
+        // Muscles move the body; physics runs after every creature has acted. Effort tires and costs energy.
+        const effort = applyMotors(this, c, o);
+        c.stamina = Math.min(st.endurance, c.stamina - 0.2 * effort * dt + (effort < 0.5 ? st.staminaRegen * dt : 0));
+        throttle = Math.min(1, (c.speed || 0) / 2);
+        move = 0.004 * effort;
+      } else {
+        throttle = o[1];
+        c.heading = (c.heading + o[0] * st.turnRate * dt + TAU) % TAU;
+        const v = throttle * st.speed * this.terrainSpeed(c);
+        c.x = this.wrap(c.x + Math.cos(c.heading) * v * dt);
+        c.z = this.wrap(c.z + Math.sin(c.heading) * v * dt);
+        this.track(c, Math.abs(v) * dt);
+        move = 0.01 * v * traitsOf(c.genome).size;
+      }
+      c.normalCost = (st.upkeep + c.brainUpkeep + move) * dt;
       c.energy -= c.normalCost + this.envCost(c, inp) * dt;
       c.actionCounters.steps++;
       if (throttle > 0.3) c.actionCounters.moved++; else if (throttle < 0.1) c.actionCounters.idle++;
@@ -278,13 +292,23 @@ export class World {
       if (o[3] >= 0.5) this.reproduce(c); // unwired output (0.5) = willing; brains can evolve restraint
       c.age += dt;
     }
+    if (this.physics) {
+      const before = this.creatures.map((c) => [c.x, c.z]);
+      stepPhysics(this);
+      this.creatures.forEach((c, i) => {
+        const d = Math.hypot(this.delta(before[i][0], c.x), this.delta(before[i][1], c.z));
+        c.speed = d / dt;
+        this.track(c, d);
+      });
+    }
     for (const c of this.creatures) {
-      if (c.alive && (c.energy <= 0 || c.age > 60 * traitsOf(c.genome).size)) {
+      if (c.alive && (c.energy <= 0 || c.age > 60 * traitsOf(c.genome).size || c.physicsFault)) {
         c.alive = false;
         this.recordElite(c);
-        this.emit({ type: 'death', id: c.id, cause: c.energy <= 0 ? 'starved' : 'old age' });
+        this.emit({ type: 'death', id: c.id, cause: c.physicsFault ? 'physics' : c.energy <= 0 ? 'starved' : 'old age' });
       }
     }
+    if (this.physics) for (const c of this.creatures) if (!c.alive) removeBody(this, c);
     this.creatures = this.creatures.filter((c) => c.alive);
     this.food = this.food.filter((f) => !f.eaten);
     this.stepCount++;
@@ -293,6 +317,14 @@ export class World {
     this.respawn();
     this.time += dt;
     this.periodic();
+  }
+
+  // Movement range for behaviour labels (homebody, patroller).
+  track(c, dist) {
+    const ac = c.actionCounters;
+    if (c.winX === undefined) { c.winX = c.x; c.winZ = c.z; }
+    ac.path += dist;
+    ac.maxDist = Math.max(ac.maxDist, Math.hypot(this.delta(c.winX, c.x), this.delta(c.winZ, c.z)));
   }
 
   periodic() {
@@ -412,6 +444,7 @@ export class World {
     const c = this.find(id);
     if (!c) return;
     c.alive = false;
+    if (this.physics) removeBody(this, c);
     this.creatures = this.creatures.filter((x) => x !== c);
     this.emit({ type: 'death', id, cause: 'god' });
   }
@@ -436,13 +469,14 @@ export class World {
     c.brainUpkeep = brainCost(c.genome.brain);
     c.weights = initWeights(c.genome.brain); // memories (map) are kept: they aren't genetic
     c.energy = Math.min(c.energy, c.stats.maxEnergy);
+    if (this.physics) { removeBody(this, c); buildBody(this, c, c.x, c.z, c.heading); } // new body shape
     this.emit({ type: 'god', action: 'mutate', id });
   }
 
   seedPredators(n) {
     const W = this.settings.worldSize;
     for (let i = 0; i < n; i++) {
-      const src = this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng);
+      const src = this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng, !!this.physics);
       const p = this.randomLandPoint();
       this.spawn(predatorGenome(src), p.x, p.z);
     }
@@ -469,7 +503,7 @@ export class World {
       for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
         const g = this.eliteCarn.length
           ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
-          : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng));
+          : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng, !!this.physics));
         g.body.diet = Math.max(g.body.diet ?? 0, 0.55);
         const p = this.randomLandPoint();
         this.spawn(g, p.x, p.z);
@@ -478,7 +512,7 @@ export class World {
     while (this.creatures.length < s.respawnMin) {
       const g = this.elite.length && this.rng.next() < 0.8
         ? mutate(this.elite[this.rng.int(0, this.elite.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds)
-        : randomGenome(this.rng);
+        : randomGenome(this.rng, !!this.physics);
       const p = this.randomLandPoint();
       this.spawn(g, p.x, p.z);
     }

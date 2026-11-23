@@ -4,9 +4,13 @@ export const RAY_CAP = 13; // max rays any creature can have (eyes 0..6 -> 1..13
 export const RAY_CHANNELS = ['food', 'creature', 'obstacle'];
 export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'biomeDanger', 'cover', 'slopeAhead', 'waterAhead', 'hazardDist', 'bias',
   'mapFoodAhead', 'mapFoodLeft', 'mapFoodRight', 'mapDangerAhead', 'mapDangerLeft', 'mapDangerRight', 'familiarity',
-  'kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin'];
+  'kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin',
+  // Physical bodies: rhythm sense (sin/cos at 0.5, 1, 2 Hz), posture, speed, stamina, joint angles and touch.
+  'osc0s', 'osc0c', 'osc1s', 'osc1c', 'osc2s', 'osc2c', 'upY', 'pitch', 'roll', 'fwdSpeed', 'stamina',
+  ...Array.from({ length: 24 }, (_, j) => `joint${j}`), ...Array.from({ length: 24 }, (_, j) => `touch${j}`)];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
-export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB'];
+export const MAX_JOINTS = 24; // joint motor outputs j0..j23 (physical bodies)
+export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB', ...Array.from({ length: MAX_JOINTS }, (_, j) => `j${j}`)];
 export const N_OUT = OUTPUTS.length;
 // Founders wire only turn/throttle/attack/reproduce; the voice must be gained by mutation.
 const CORE_OUTPUTS = 4;
@@ -24,14 +28,19 @@ function ioNodes() {
 
 // Input ids a creature with `rays` rays can actually use (ray slots are centre-out, so slots < rays).
 // Social senses (kin, hearing) are silent for founders, so founder links skip them; mutation can add them.
+// Body senses are silent in kinematic mode, so founders there skip them too.
 const SOCIAL = new Set(['kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin']);
-export const usableInputs = (rays) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i),
-  ...SCALARS.flatMap((name, i) => (SOCIAL.has(name) ? [] : [RAY_CAP * 3 + i]))];
+const BODY_SENSE = (name) => /^(osc|joint|touch)|^(upY|pitch|roll|fwdSpeed|stamina)$/.test(name);
+export const usableInputs = (rays, physical = false) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i),
+  ...SCALARS.flatMap((name, i) => (SOCIAL.has(name) || (!physical && BODY_SENSE(name)) ? [] : [RAY_CAP * 3 + i]))];
+export const JOINT_OUT = OUTPUTS.indexOf('j0');
 
-export function createBrain(rng, links = rng.int(4, 8), inputs = null) {
+// outputs: output indices founders may wire (default: turn/throttle/attack/reproduce).
+export function createBrain(rng, links = rng.int(4, 8), inputs = null, outputs = null) {
   const conns = [], seen = new Set();
   while (conns.length < links) {
-    const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1), to = N_IN + rng.int(0, CORE_OUTPUTS - 1), key = `${from}>${to}`;
+    const from = inputs ? inputs[rng.int(0, inputs.length - 1)] : rng.int(0, N_IN - 1);
+    const to = N_IN + (outputs ? outputs[rng.int(0, outputs.length - 1)] : rng.int(0, CORE_OUTPUTS - 1)), key = `${from}>${to}`;
     if (seen.has(key)) continue;
     seen.add(key);
     conns.push({ from, to, w: rng.gauss(), on: true, p: 0 });
@@ -151,7 +160,7 @@ export function runBrain(b, state, inputs, out, weights = null, pre = null) {
     const n = nodes[j], inc = incoming[j];
     let s = n.bias;
     for (let q = 0; q < inc.length; q += 2) s += w[inc[q + 1]] * scratch[inc[q]];
-    const target = n.type === 'out' && n.id !== N_IN ? 1 / (1 + Math.exp(-s)) : Math.tanh(s);
+    const target = n.type === 'out' && n.id !== N_IN && n.id < N_IN + JOINT_OUT ? 1 / (1 + Math.exp(-s)) : Math.tanh(s); // turn and joints are signed
     state[j] = n.tau === 1 ? target : state[j] + (target - state[j]) / n.tau;
   }
   for (let o = 0; o < N_OUT; o++) out[o] = state[outIdx[o]];

@@ -1,5 +1,5 @@
-import { createBrain, mutateBrain, cloneBrain, brainDistance, usableInputs } from './neat.js';
-import { randomBodyPlan, mutateBodyPlan, cloneBodyPlan, bodyPlanDistance } from './bodyplan.js';
+import { createBrain, mutateBrain, cloneBrain, brainDistance, usableInputs, INPUT_NAMES, OUTPUTS, N_IN, JOINT_OUT, MAX_JOINTS } from './neat.js';
+import { randomBodyPlan, mutateBodyPlan, cloneBodyPlan, bodyPlanDistance, expandBody } from './bodyplan.js';
 import { paramsFromPlan } from './body.js';
 
 // Summary traits computed from a body plan (for stats, averages and display). Bodies are body plans;
@@ -32,13 +32,22 @@ export function traitsOf(g) {
 const localIds = () => { let n = 100000; return () => n++; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-export function randomGenome(rng) {
+// physical: founders wire attack/reproduce and their own joints, and each joint starts linked to a
+// rhythm input (the rhythm sense); everything else about the brain is random.
+export function randomGenome(rng, physical = false) {
   const body = randomBodyPlan(rng);
   body.diet = rng.range(0, 0.2); // founders start as herbivores; carnivory must evolve (or be seeded)
   body.hue = rng.next();
   body.reproThreshold = rng.range(0.5, 0.95);
-  const g = { body, brain: null };
-  g.brain = createBrain(rng, rng.int(4, 8), usableInputs(1 + 2 * traitsOf(g).eyes));
+  const g = { body, brain: null }, rays = 1 + 2 * traitsOf(g).eyes;
+  if (!physical) { g.brain = createBrain(rng, rng.int(4, 8), usableInputs(rays)); return g; }
+  const joints = Math.min(MAX_JOINTS, expandBody(body, MAX_JOINTS + 1).length - 1);
+  g.brain = createBrain(rng, rng.int(4, 8), usableInputs(rays, true), [2, 3, ...Array.from({ length: joints }, (_, j) => JOINT_OUT + j)]);
+  const osc = ['osc0s', 'osc0c', 'osc1s', 'osc1c', 'osc2s', 'osc2c'].map((n) => INPUT_NAMES.indexOf(n));
+  for (let j = 0; j < joints; j++) {
+    const from = osc[rng.int(0, osc.length - 1)], to = N_IN + JOINT_OUT + j;
+    if (!g.brain.conns.some((k) => k.from === from && k.to === to)) g.brain.conns.push({ from, to, w: rng.gauss() * 2, on: true, p: 0 });
+  }
   return g;
 }
 
