@@ -1,7 +1,7 @@
 import { h } from './dom.js';
 
 // Dark-surface categorical steps, fixed order (validated reference palette).
-export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
+export const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c'];
 const SURFACE = '#1a1a19', GRID = '#383835', MUTED = '#c3c2b7', TEXT = '#f0efec';
 
 // keys: [{ get(point) -> number, label, color, fmt?(point) -> string }]
@@ -73,6 +73,9 @@ export const TABS = {
     TRAIT('legs', 'Legs', 8, SERIES[0]), TRAIT('eyes', 'Eyes', 6, SERIES[1]), TRAIT('size', 'Size', 2, SERIES[2]),
     TRAIT('diet', 'Diet', 1, SERIES[3]), TRAIT('insulation', 'Insulation', 1, SERIES[4]),
   ] },
+  biomes: { label: 'Biomes', keys: ['plains', 'forest', 'wetland', 'lake', 'mountain', 'desert'].map((b, i) => ({
+    get: (p) => (p.biomes ? p.biomes[b] : 0), label: b[0].toUpperCase() + b.slice(1), color: SERIES[i],
+  })) },
   behavior: { label: 'Behaviour', keys: ['wanderer', 'forager', 'hunter', 'fleer', 'idler'].map((l, i) => ({
     get: (p) => p.labels[l] || 0, label: l[0].toUpperCase() + l.slice(1), color: SERIES[i],
   })) },

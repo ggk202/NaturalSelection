@@ -9,7 +9,8 @@ const SPEEDS = [0.5, 1, 2, 4, 8];
 const FIELDS = [
   ['World', [
     ['seed', 'Seed', 1, 99999, 1, false],
-    ['worldSize', 'World size', 60, 200, 10, false],
+    ['worldSize', 'World size', 60, 300, 10, false],
+    ['waterLevel', 'Water level', 0, 0.5, 0.02, false],
     ['initialCreatures', 'Starting creatures', 10, 300, 10, false],
     ['maxCreatures', 'Max creatures', 50, 600, 10, true],
     ['respawnMin', 'Respawn assist (min pop, 0 = off)', 0, 50, 1, true],

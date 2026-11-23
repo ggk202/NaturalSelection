@@ -301,3 +301,20 @@ checks['world renders biomes'] = async ({ page, base, assert, errors }) => {
   assert.ok(r.rocks > 10, `rocks ${r.rocks}`);
   assert.deepEqual(errors, []);
 };
+
+checks['biomes tab draws'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.evaluate(() => { window.__app.speed = 8; });
+  await page.waitForFunction(() => window.__world.stats.series.length > 3, null, { timeout: 20000 });
+  await page.click('#charts [data-tab="biomes"]');
+  await page.waitForTimeout(1200);
+  const legend = await page.textContent('#charts .legend');
+  for (const k of ['Plains', 'Forest', 'Wetland', 'Lake', 'Mountain', 'Desert']) assert.ok(legend.includes(k), k);
+};
+
+checks['world settings exist'] = async ({ page, base, assert }) => {
+  await boot(page, base);
+  await page.click('#btn-settings');
+  assert.equal(await page.getAttribute('#settings input[name="worldSize"]', 'max'), '300');
+  assert.ok(await page.$('#settings input[name="waterLevel"]'));
+};
