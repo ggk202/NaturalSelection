@@ -64,6 +64,11 @@ export function mountInspector(root, app) {
       ['neurons / links', `${b.nodes.filter((n) => n.type === 'hid').length} / ${b.conns.filter((k) => k.on).length}`],
       ['nearest seen is kin', kin == null ? '–' : `${Math.round(kin * 100)}%`],
       ['saying', c.word && c.word.length ? c.word.map(syl).join('-') : syl(c.said ?? -1)], ['last word', c.lastWord ? c.lastWord.map(syl).join('-') : '–'],
+      ['knows words', Object.entries(c.vocab || {}).sort((x, y) => y[1].n - x[1].n).map(([k, v]) => {
+        const m = [['danger', v.t], ['food', v.f], ['kin', v.k]].filter(([, x]) => x > 0.5).map(([n]) => n);
+        return `${[...k].map((d) => SYLLABLES[d]).join('-')} = ${m.join('/') || '?'}`;
+      }).join(', ') || 'none'],
+      ['sick', c.sick ? `strain ${c.sick.strain}` : 'no'],
       ['holding', c.held != null ? (app.world.objects.find((o) => o.id === c.held)?.type ?? '–') : '–'], ['in shelter', c.sheltered ? 'yes' : 'no'], ['hearing', syl(c.heard ?? -1)], ['species words', lex || 'none yet'],
     ].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))));
     stats.replaceChildren(...STAT_KEYS.map((k) => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c.stats[k])))));

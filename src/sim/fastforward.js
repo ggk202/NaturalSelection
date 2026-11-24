@@ -12,7 +12,9 @@ const CHECKPOINTS = {
   carnivores: (c) => /carnivor/i.test(c.title),
   ambush: (c) => /ambush/i.test(c.title),
   dextrous: (c) => /dextrous/i.test(c.title),
-  word: (c) => / call/i.test(c.title),
+  word: (c) => / call|word/i.test(c.title),
+  tool: (c) => /nut|stone|spear|trap|shelter|harvest/i.test(c.title),
+  threat: (c) => c.kind === 'threat',
 };
 export const CHECKPOINT_KINDS = Object.keys(CHECKPOINTS);
 

@@ -8,7 +8,7 @@ import { createPhysics } from './physics.js';
 import { expandBody } from './bodyplan.js';
 import { PHYS_PARTS } from './creature-physics.js';
 
-export const SCHEMA_VERSION = 8; // 6: body plans; 7: objects, tool-use brain I/O; 8: words
+export const SCHEMA_VERSION = 9; // 6: body plans; 7: objects, tool-use brain I/O; 8: words; 9: threats, culture
 
 const g2j = (g) => ({ body: cloneBodyPlan(g.body), brain: cloneBrain(g.brain) });
 const j2g = g2j;
@@ -26,6 +26,7 @@ export function serializeWorld(w) {
     nextNodeId: w.nextNodeId,
     food: w.food.map((f) => ({ ...f })),
     objects: w.objects.map((o) => ({ ...o })),
+    strains: w.strains.map((s) => ({ ...s })), nextOutbreakAt: w.nextOutbreakAt, nextDisasterAt: w.nextDisasterAt, drought: w.drought,
     hazards: w.env.hazards.map((h) => ({ ...h })),
     elite: w.elite.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
     eliteCarn: w.eliteCarn.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
@@ -54,6 +55,7 @@ export function deserializeWorld(o) {
   if (o.physics) w.physics = createPhysics(w.terrain, new Uint8Array(fromB64(o.physics)));
   w.food = o.food.map((f) => ({ ...f }));
   w.objects = o.objects.map((x) => ({ ...x }));
+  w.strains = o.strains.map((s) => ({ ...s })); w.nextOutbreakAt = o.nextOutbreakAt; w.nextDisasterAt = o.nextDisasterAt; w.drought = o.drought;
   w.env = new Environment(o.settings.env, w.rng, o.settings.worldSize, () => 0);
   w.env.hazards = o.hazards.map((h) => ({ ...h }));
   w.rng.setState(o.rng); // after Environment, which consumes rng

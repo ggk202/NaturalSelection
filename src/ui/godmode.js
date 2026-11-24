@@ -10,14 +10,18 @@ export function mountGodMode(root, app, view, canvas) {
   let tool = 'inspect';
   const btns = TOOLS.map(([id, icon, label]) => h('button', { 'data-tool': id, title: label, 'aria-label': label, onclick: () => { tool = id; sync(); } }, icon));
   const palette = h('div', { id: 'tools', class: 'panel' }, btns,
-    h('button', { id: 'btn-predators', title: 'Seed 5 predators', 'aria-label': 'Seed 5 predators', onclick: () => app.world.seedPredators(5) }, '🦖'));
+    h('button', { id: 'btn-predators', title: 'Seed 5 predators', 'aria-label': 'Seed 5 predators', onclick: () => app.world.seedPredators(5) }, '🦖'),
+    h('button', { id: 'btn-outbreak', title: 'Start an outbreak', 'aria-label': 'Start an outbreak', onclick: () => app.world.outbreak() }, '🦠'),
+    h('button', { id: 'btn-disaster', title: 'Random disaster', 'aria-label': 'Random disaster', onclick: () => app.world.disaster() }, '🌋'));
   const hint = h('div', { class: 'hint' });
   root.append(palette, hint);
 
   function sync() {
     for (const b of btns) b.classList.toggle('on', b.dataset.tool === tool);
     hint.textContent = TOOLS.find((t) => t[0] === tool)[2];
+    hint.style.left = `${palette.offsetLeft + palette.offsetWidth + 8}px`; // the palette wraps to two columns on short screens
   }
+  addEventListener('resize', sync);
 
   // Creature under the tap, or the nearest one to the ground point (small creatures are hard to hit on a tablet).
   function creatureAt(hit) {

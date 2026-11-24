@@ -141,12 +141,12 @@ export function createScene(canvas) {
     }
     food.instanceMatrix.needsUpdate = true;
 
-    const key = world.env.hazards.map((h) => h.id).join(',');
+    const key = world.env.hazards.map((h) => `${h.id}:${Math.round(h.r)}`).join(',');
     if (key !== hazardKey) {
       hazardKey = key;
-      for (const c of [...hazardGroup.children]) { hazardGroup.remove(c); c.geometry.dispose(); }
+      for (const c of [...hazardGroup.children]) { hazardGroup.remove(c); c.geometry.dispose(); c.material.dispose(); }
       for (const hz of world.env.hazards) {
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(hz.r, hz.r, 6, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xd02a1a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }));
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(hz.r, hz.r, 6, 24, 1, true), new THREE.MeshBasicMaterial({ color: hz.kind === 'flood' ? 0x2a6ad0 : hz.kind === 'wildfire' ? 0xff7a1a : 0xd02a1a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }));
         disc.position.set(hz.x, heightAt(hz.x, hz.z), hz.z);
         disc.userData.hazardId = hz.id;
         hazardGroup.add(disc);

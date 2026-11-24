@@ -3,7 +3,8 @@
 v1 (done): 3D sandbox, parameter bodies with cost/benefit, fixed MLP brains, gene-pool
 predators, seasons/temperature/hazards, checkpoints, IndexedDB runs, offline PWA.
 
-Next, in order. Each project is designed, then built, one at a time:
+Projects 1–5 are built, plus speech bubbles, a player character, a rival apex lineage, disease, disasters and
+cultural word learning (see `docs/superpowers/specs/`). Original plan, kept for reference:
 
 1. **Living world.** Larger seeded world, terrain that affects movement, biomes each with
    benefits and hazards (forest, plains, water/wetland, mountains, desert), terrain senses,

@@ -475,3 +475,12 @@ checks['player spawns, moves with keys and speaks with syllable buttons'] = asyn
   await page.waitForSelector('#player-dead:not([hidden])', { timeout: 5000 });
   assert.deepEqual(errors, []);
 };
+
+checks['outbreak and disaster buttons start threats'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  await page.click('#btn-outbreak');
+  await page.click('#btn-disaster');
+  const r = await page.evaluate(() => { const w = window.__world; return { sick: w.creatures.some((c) => c.sick), threats: w.checkpoints.filter((c) => c.kind === 'threat').length }; });
+  assert.ok(r.sick && r.threats >= 1, JSON.stringify(r));
+  assert.deepEqual(errors, []);
+};

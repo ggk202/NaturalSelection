@@ -16,6 +16,7 @@ import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 import { initObjects, rebuildObjectGrid, senseObjects, act, stepObjects, onEat, spearBonus, hurt } from './tools.js';
 import { OUTPUTS } from './neat.js';
+import { stepDisease, stepDisasters, hazardDamage, startOutbreak, startDisaster } from './threats.js';
 import { spawnPlayer, playerOutputs, playerSpeak, steerPhysical } from './player.js';
 const OUT = { grab: OUTPUTS.indexOf('grab'), drop: OUTPUTS.indexOf('drop'), use: OUTPUTS.indexOf('use') };
 
@@ -73,6 +74,7 @@ export class World {
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
     this.objectGrid = new Grid(8, s.worldSize);
+    this.strains = []; this.nextOutbreakAt = 90; this.nextDisasterAt = 150; this.drought = null; // threats
     this.terrain = createTerrain(s);
     this.physics = s.locomotion === 'physical' ? createPhysics(this.terrain) : null;
     this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
@@ -110,6 +112,7 @@ export class World {
       lastOutputs: new Float32Array(N_OUT), brainState: newState(genome.brain), brainPre: newState(genome.brain), brainUpkeep: brainCost(genome.brain), stillRun: 0, strikeWindow: 0,
       weights: initWeights(genome.brain), energyMark: null, normalCost: 0,
       map: parent ? inheritMap(parent.map) : createMap(this.settings.worldSize, this.settings.mapCell),
+      vocab: parent && parent.vocab ? inheritVocab(parent.vocab) : {},
       actionCounters: emptyCounters(), label: null, speciesId: null,
     };
     if (traitsOf(genome).diet > 0.5) this.carnivoresSeen = true;
@@ -134,7 +137,9 @@ export class World {
     const W = this.settings.worldSize;
     for (let tries = 0; tries < 12; tries++) {
       const x = this.rng.range(0, W), z = this.rng.range(0, W);
-      if (this.rng.next() * 2 < BIOMES[this.terrain.biomeAt(x, z)].fertility) return this.addFoodAt(x, z);
+      const b = this.terrain.biomeAt(x, z);
+      if (this.drought && this.drought.biome === b) continue;
+      if (this.rng.next() * 2 < BIOMES[b].fertility) return this.addFoodAt(x, z);
     }
   }
 
@@ -201,6 +206,7 @@ export class World {
     out[S.kinNear] = o ? c.kinCache.v : 0;
     this.hear(c, out);
     senseObjects(this, c, out, S);
+    out[S.sick] = c.sick ? 1 : 0; out[S.sickSeen] = c.nearestSeen && c.nearestSeen.sick ? 1 : 0;
     out[S.compassSin] = Math.sin(c.heading); out[S.compassCos] = Math.cos(c.heading);
     if ((this.stepCount + c.id) % 20 === 0 || c.memFood === undefined) c.memFood = bestFood(c.map);
     if (c.memFood) {
@@ -233,6 +239,14 @@ export class World {
     // The loudest speaker's word so far: its last syllables, as many as this listener can attend to.
     const word = loudest ? loudest.word : null, span = word ? Math.min(word.length, c.stats.attention) : 0;
     for (let i = 0; i < 6; i++) out[S[`heard${i}`]] = i < span ? (word[word.length - span + i] + 1) / 4 : 0;
+    // Culture: what this word means to me, and (every 8 steps) learn it from what I see right now.
+    const key = span ? word.join('') : null, v = key && c.vocab ? c.vocab[key] : null;
+    out[S.heardThreat] = v ? v.t : 0; out[S.heardFood] = v ? v.f : 0; out[S.heardKin] = v ? v.k : 0;
+    if (key && (this.stepCount & 7) === 0) {
+      let food = false;
+      for (let r = 0; r < RAY_CAP; r++) if (out[r * 3] > 0.3) { food = true; break; }
+      learnWord(c, key, !!c.threatNear, food, out[S.kinNear] > 0.6);
+    }
   }
 
   rebuildGrids() {
@@ -343,12 +357,14 @@ export class World {
         this.track(c, d);
       });
     }
+    stepDisease(this);
+    stepDisasters(this);
     stepObjects(this);
     for (const c of this.creatures) {
       if (c.alive && (c.energy <= 0 || (c.age > 60 * traitsOf(c.genome).size && !c.player) || c.physicsFault)) {
         c.alive = false;
         this.recordElite(c);
-        this.emit({ type: 'death', id: c.id, cause: c.physicsFault ? 'physics' : c.energy <= 0 ? 'starved' : 'old age' });
+        this.emit({ type: 'death', id: c.id, cause: c.physicsFault ? 'physics' : c.energy <= 0 ? (c.sick ? 'disease' : 'starved') : 'old age' });
       }
     }
     if (this.physics) for (const c of this.creatures) if (!c.alive) removeBody(this, c);
@@ -395,8 +411,12 @@ export class World {
   call(c, loud, syll) {
     // Consecutive syllables form a word, up to the attention span; a silent step ends it.
     const w = c.word || (c.word = []);
+    // Culture: a learned word that fits what I see replaces the brain's own syllables.
+    if (!w.length) c.plan = chooseWord(c, this.callContext(c));
+    const cap = c.plan ? Math.min(c.plan.length, c.stats.attention) : c.stats.attention;
+    if (c.plan) syll = c.plan[Math.min(w.length, c.plan.length - 1)];
     if (!w.length || w[w.length - 1] !== syll || ++c.wordHold >= WORD_HOLD) {
-      if (w.length < c.stats.attention) c.word = [...w, syll]; // new array: heard records keep their copy
+      if (w.length < cap) c.word = [...w, syll]; // new array: heard records keep their copy
       c.wordHold = 0;
     }
     const cost = CALL_COST * loud * this.settings.dt;
@@ -412,7 +432,7 @@ export class World {
     if (!c.word || !c.word.length) return;
     c.lastWord = c.word;
     if (c.word.length > 1 && !c.player) this.tracker.noteWord(c, c.word.map((k) => SYLLABLES[k]).join('-'), this.callContext(c), this.stepCount);
-    c.word = [];
+    c.word = []; c.plan = null;
   }
 
   // What was going on when a creature called: threat seen, food seen, kin nearby; where it is and
@@ -442,7 +462,11 @@ export class World {
     const t = sensed[S.temperature], st = c.stats, cfg = this.settings.env;
     let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist)) * (c.sheltered ? 0.3 : 1);
     cost += this.biomeDrain(c, this.biomeOf(c));
-    if (sensed[S.hazardDist] === 0) cost += cfg.hazardDamage;
+    if (sensed[S.hazardDist] === 0) { // inside a hazard zone: the worst one applies
+      let d = 0;
+      for (const h of this.env.hazards) if (Math.hypot(this.delta(c.x, h.x), this.delta(c.z, h.z)) <= h.r) d = Math.max(d, hazardDamage(this, c, h));
+      cost += d;
+    }
     return cost;
   }
 
@@ -491,6 +515,9 @@ export class World {
     this.emit({ type: 'death', id: target.id, cause: 'killed' });
     this.recordElite(target);
   }
+
+  outbreak() { this.emit({ type: 'god', action: 'outbreak' }); return startOutbreak(this); }
+  disaster(kind) { this.emit({ type: 'god', action: 'disaster' }); return startDisaster(this, kind); }
 
   get player() { return this.creatures.find((c) => c.player) || null; }
   spawnPlayer(opts, x, z) { return spawnPlayer(this, opts, x, z); }
@@ -563,7 +590,7 @@ export class World {
   respawn() {
     const s = this.settings, W = s.worldSize;
     const apex = s.apexMin > 0 ? Math.max(1, Math.round(s.apexMin * this.areaScale)) : 0; // per 200×200 area
-    const minCarn = Math.min(Math.max(apex, this.carnivoresSeen ? s.predatorMin : 0), Math.max(1, Math.floor(this.creatures.length / 4))); // never most of a crashed population
+    const minCarn = Math.min(Math.max(apex, this.carnivoresSeen ? s.predatorMin : 0), Math.floor(this.creatures.length / 4)); // never most of a crashed population; none in an empty world
     if (minCarn > 0) {
       let carn = 0;
       for (const c of this.creatures) if (traitsOf(c.genome).diet > 0.5) carn++;
@@ -584,6 +611,32 @@ export class World {
       this.spawn(g, p.x, p.z);
     }
   }
+}
+
+// ---------- culture: a personal vocabulary, word (syllable digits) -> {t, f, k: how often it went with threat/food/kin, n: uses} ----------
+const VOCAB_MAX = 8, VOCAB_RATE = 0.2, SPEAK_MIN = 0.5;
+function learnWord(c, key, threat, food, kin) {
+  const vocab = c.vocab || (c.vocab = {});
+  let v = vocab[key];
+  if (!v) {
+    const keys = Object.keys(vocab);
+    if (keys.length >= VOCAB_MAX) delete vocab[keys.reduce((a, b) => (vocab[a].n <= vocab[b].n ? a : b))]; // forget the least used
+    v = vocab[key] = { t: 0, f: 0, k: 0, n: 0 };
+  }
+  v.t += VOCAB_RATE * (+threat - v.t); v.f += VOCAB_RATE * (+food - v.f); v.k += VOCAB_RATE * (+kin - v.k); v.n++;
+}
+// The known word that best fits the situation, as syllable indices (null if none fits well enough).
+function chooseWord(c, ctx) {
+  let best = null, score = SPEAK_MIN;
+  for (const [key, v] of Object.entries(c.vocab || {})) {
+    const s = Math.max(ctx.threat ? v.t : 0, ctx.food ? v.f : 0, ctx.kin ? v.k : 0);
+    if (s > score) { score = s; best = key; }
+  }
+  return best ? [...best].map(Number) : null;
+}
+// Children start with their parent's words at half strength.
+function inheritVocab(p) {
+  return Object.fromEntries(Object.entries(p).map(([k, v]) => [k, { t: v.t / 2, f: v.f / 2, k: v.k / 2, n: Math.floor(v.n / 2) }]));
 }
 
 // Centre of the best remembered food cell (null if nothing worth remembering).

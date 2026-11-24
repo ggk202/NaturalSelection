@@ -33,6 +33,8 @@ const FIELDS = [
     ['env.hazards', 'Random hazard zones', null, null, null, false],
     ['env.hazardCount', 'Hazard zones', 0, 10, 1, false],
     ['env.hazardDamage', 'Hazard damage (energy/s)', 0, 10, 0.5, true],
+    ['env.diseases', 'Disease outbreaks (evolving strains)', null, null, null, true],
+    ['env.disasters', 'Disasters (wildfire, flood, drought)', null, null, null, true],
   ]],
 ];
 

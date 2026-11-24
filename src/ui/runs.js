@@ -8,7 +8,7 @@ import { fmtTime } from './charts.js';
 
 const TOAST_GAP_MS = 15000;
 let lastToast = -Infinity;
-const KIND_ICON = { colonized: '🧭', 'new-species': '🌱', 'body-shift': '🦴', 'behavior-shift': '🧠', first: '⭐' };
+const KIND_ICON = { colonized: '🧭', 'new-species': '🌱', 'body-shift': '🦴', 'behavior-shift': '🧠', first: '⭐', threat: '⚠️' };
 
 export function showSheet(el) {
   for (const s of document.querySelectorAll('.sheet')) if (s !== el) s.hidden = true;

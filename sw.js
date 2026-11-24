@@ -36,6 +36,7 @@ const PRECACHE = [
   './src/sim/species.js',
   './src/sim/stats.js',
   './src/sim/terrain.js',
+  './src/sim/threats.js',
   './src/sim/tools.js',
   './src/sim/vision.js',
   './src/sim/world.js',

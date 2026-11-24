@@ -2,6 +2,7 @@ export const DEFAULT_ENV = {
   seasons: true, seasonLength: 120, foodSeasonAmp: 0.7,
   temperature: true, tempAmp: 1,
   hazards: true, hazardCount: 3, hazardDamage: 2,
+  diseases: true, disasters: true,
 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

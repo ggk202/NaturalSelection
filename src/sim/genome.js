@@ -19,8 +19,9 @@ export const GENES = [
   { key: 'parts', min: 1, max: 32, int: true },
   { key: 'grippers', min: 0, max: 12, int: true },
   { key: 'attention', min: 1, max: 6, int: true },
+  { key: 'resistance', min: 0, max: 1 },
 ];
-const TRAIT_GENES = { diet: [0, 1], hue: [0, 1], reproThreshold: [0.5, 0.95], balance: [0, 1], attention: [1, 6] };
+const TRAIT_GENES = { diet: [0, 1], hue: [0, 1], reproThreshold: [0.5, 0.95], balance: [0, 1], attention: [1, 6], resistance: [0, 1] };
 
 const traitCache = new WeakMap();
 // Cached summary of a genome's body (plans are never mutated in place).
@@ -42,6 +43,7 @@ export function randomGenome(rng, physical = false) {
   body.reproThreshold = rng.range(0.5, 0.95);
   body.balance = rng.range(0.4, 0.8); // righting reflex strength (physical bodies)
   body.attention = rng.range(1, 2.5); // max word length (syllables), rounded
+  body.resistance = rng.range(0, 0.2); // disease resistance
   const g = { body, brain: null }, rays = 1 + 2 * traitsOf(g).eyes;
   if (!physical) { g.brain = createBrain(rng, rng.int(4, 8), usableInputs(rays)); return g; }
   const joints = Math.min(MAX_JOINTS, expandBody(body, MAX_JOINTS + 1).length - 1);
