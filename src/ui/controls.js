@@ -53,6 +53,7 @@ export function mountControls(root, app) {
     h('div', { class: 'group' }, speedBtns),
     h('button', { id: 'btn-settings', onclick: () => showSheet(sheet) }, 'Settings'),
     h('button', { id: 'btn-ff', 'aria-label': 'Fast-forward', onclick: () => app.ui.ff.open() }, '⏩'),
+    h('button', { id: 'btn-player', onclick: () => app.ui.player.open() }, 'Play'),
     h('button', { id: 'btn-runs', onclick: () => app.ui.runs.openRuns() }, 'Runs'),
     h('button', { id: 'btn-timeline', onclick: () => app.ui.runs.openTimeline() }, 'Timeline'),
     h('button', { id: 'btn-charts', onclick: () => toggle(app.ui.charts.panel) }, 'Graphs'),

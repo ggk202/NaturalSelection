@@ -451,3 +451,27 @@ checks['speech bubbles show words and translations'] = async ({ page, base, asse
   assert.ok(r.some((t) => t.includes('mi-to') && t.includes('food, north')), JSON.stringify(r));
   assert.deepEqual(errors, []);
 };
+
+checks['player spawns, moves with keys and speaks with syllable buttons'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  await page.click('#btn-player');
+  await page.waitForSelector('#player-sheet:not([hidden])');
+  await page.check('#player-sheet input[name="wings"]');
+  await page.click('#player-spawn');
+  await page.waitForSelector('#player-hud:not([hidden])');
+  const start = await page.evaluate(() => { const p = window.__world.player; p.energy = p.stats.maxEnergy; return { x: p.x, z: p.z, wings: p.stats.flight > 0 }; });
+  assert.ok(start.wings, 'customization applied');
+  await page.keyboard.down('w');
+  await page.waitForTimeout(1500);
+  await page.keyboard.up('w');
+  const moved = await page.evaluate((s) => { const w = window.__world, p = w.player; return Math.hypot(w.delta(s.x, p.x), w.delta(s.z, p.z)); }, start);
+  assert.ok(moved > 0.5, `moved ${moved}`);
+  await page.click('#player-hud [data-syll="ka"]'); // proves the button is clickable
+  await page.waitForTimeout(1300); // pause: the next presses start a new word
+  await page.evaluate(() => { for (const s of ['mi', 'to']) document.querySelector(`#player-hud [data-syll="${s}"]`).click(); }); // one quick word (software GL makes real clicks slow)
+  await page.waitForFunction(() => document.querySelector('#player-hud .word').textContent === 'mi-to', null, { timeout: 3000 }).catch(async (e) => { throw new Error(`word: ${await page.evaluate(() => document.querySelector('#player-hud .word').textContent)}`); });
+  await page.waitForFunction(() => [...document.querySelectorAll('.bubble:not([hidden])')].some((b) => b.textContent.includes('mi-to')), null, { timeout: 3000 });
+  await page.evaluate(() => { window.__world.player.energy = -1; });
+  await page.waitForSelector('#player-dead:not([hidden])', { timeout: 5000 });
+  assert.deepEqual(errors, []);
+};

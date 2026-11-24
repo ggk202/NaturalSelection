@@ -16,6 +16,7 @@ import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
 import { initObjects, rebuildObjectGrid, senseObjects, act, stepObjects, onEat, spearBonus, hurt } from './tools.js';
 import { OUTPUTS } from './neat.js';
+import { spawnPlayer, playerOutputs, playerSpeak, steerPhysical } from './player.js';
 const OUT = { grab: OUTPUTS.indexOf('grab'), drop: OUTPUTS.indexOf('drop'), use: OUTPUTS.indexOf('use') };
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
@@ -285,19 +286,21 @@ export class World {
       if (!c.alive) continue;
       // Reward = energy change since this creature's last update, beyond its normal running costs.
       // Credit goes to the activations that produced last step's actions (still in brainState).
-      if (c.energyMark !== null) {
+      if (c.energyMark !== null && !c.player) {
         const reward = Math.max(-1, Math.min(1, c.energy - c.energyMark + c.normalCost));
         learn(c.genome.brain, c.brainPre, c.brainState, c.weights, reward);
         if (reward < -0.02) remember(c.map, c.x, c.z, 'danger', Math.min(1, -2 * reward));
       }
       c.energyMark = c.energy;
       remember(c.map, c.x, c.z, 'visits', 1 / 127);
-      const o = runBrain(c.genome.brain, c.brainState, this.sense(c, inp), c.lastOutputs, c.weights, c.brainPre);
+      this.sense(c, inp);
+      const o = c.player ? playerOutputs(this, c, c.lastOutputs, OUT) : runBrain(c.genome.brain, c.brainState, inp, c.lastOutputs, c.weights, c.brainPre);
       const st = c.stats, ac = c.actionCounters;
       let throttle, move;
       if (this.physics) {
         // Muscles move the body; physics runs after every creature has acted. Effort tires and costs energy.
         const effort = applyMotors(this, c, o);
+        if (c.player) steerPhysical(this, c);
         c.stamina = Math.min(st.endurance, c.stamina - 0.2 * effort * dt + (effort < 0.5 ? st.staminaRegen * dt : 0));
         throttle = Math.min(1, (c.speed || 0) / 2);
         move = 0.004 * effort;
@@ -322,9 +325,10 @@ export class World {
       this.eat(c);
       if (o[2] > 0.5 && st.attack + spearBonus(this, c) > 0.05) this.attack(c);
       act(this, c, o, OUT);
-      if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c), this.stepCount); // base rates, sampled
+      if ((this.stepCount & 7) === 0 && !c.player) this.tracker.noteContext(c, this.callContext(c), this.stepCount); // base rates, sampled
       // Dead-zone: a drifting unwired output (≈0.5) must not murmur constantly.
-      if (o[4] > CALL_ON) this.call(c, (o[4] - CALL_ON) / (1 - CALL_ON), (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
+      if (c.player) playerSpeak(this, c);
+      else if (o[4] > CALL_ON) this.call(c, (o[4] - CALL_ON) / (1 - CALL_ON), (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
       else { c.said = -1; this.endWord(c); }
       if (o[3] >= 0.5) this.reproduce(c); // unwired output (0.5) = willing; brains can evolve restraint
       c.age += dt;
@@ -340,7 +344,7 @@ export class World {
     }
     stepObjects(this);
     for (const c of this.creatures) {
-      if (c.alive && (c.energy <= 0 || c.age > 60 * traitsOf(c.genome).size || c.physicsFault)) {
+      if (c.alive && (c.energy <= 0 || (c.age > 60 * traitsOf(c.genome).size && !c.player) || c.physicsFault)) {
         c.alive = false;
         this.recordElite(c);
         this.emit({ type: 'death', id: c.id, cause: c.physicsFault ? 'physics' : c.energy <= 0 ? 'starved' : 'old age' });
@@ -406,7 +410,7 @@ export class World {
   endWord(c) {
     if (!c.word || !c.word.length) return;
     c.lastWord = c.word;
-    if (c.word.length > 1) this.tracker.noteWord(c, c.word.map((k) => SYLLABLES[k]).join('-'), this.callContext(c), this.stepCount);
+    if (c.word.length > 1 && !c.player) this.tracker.noteWord(c, c.word.map((k) => SYLLABLES[k]).join('-'), this.callContext(c), this.stepCount);
     c.word = [];
   }
 
@@ -484,6 +488,9 @@ export class World {
     this.emit({ type: 'death', id: target.id, cause: 'killed' });
     this.recordElite(target);
   }
+
+  get player() { return this.creatures.find((c) => c.player) || null; }
+  spawnPlayer(opts, x, z) { return spawnPlayer(this, opts, x, z); }
 
   find(id) { return this.creatures.find((c) => c.id === id) || null; }
 
