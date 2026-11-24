@@ -7,10 +7,12 @@ export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'b
   'kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin',
   // Physical bodies: rhythm sense (sin/cos at 0.5, 1, 2 Hz), posture, speed, stamina, joint angles and touch.
   'osc0s', 'osc0c', 'osc1s', 'osc1c', 'osc2s', 'osc2c', 'upY', 'pitch', 'roll', 'fwdSpeed', 'stamina',
-  ...Array.from({ length: 24 }, (_, j) => `joint${j}`), ...Array.from({ length: 24 }, (_, j) => `touch${j}`)];
+  ...Array.from({ length: 24 }, (_, j) => `joint${j}`), ...Array.from({ length: 24 }, (_, j) => `touch${j}`),
+  // Tool use: nearest loose object, what is held, a nut in reach, standing in a shelter.
+  'objDist', 'objAngle', 'objType', 'holding', 'nutNear', 'sheltered'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
 export const MAX_JOINTS = 24; // joint motor outputs j0..j23 (physical bodies)
-export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB', ...Array.from({ length: MAX_JOINTS }, (_, j) => `j${j}`)];
+export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB', ...Array.from({ length: MAX_JOINTS }, (_, j) => `j${j}`), 'grab', 'drop', 'use'];
 export const N_OUT = OUTPUTS.length;
 // Founders wire only turn/throttle/attack/reproduce; the voice must be gained by mutation.
 const CORE_OUTPUTS = 4;
@@ -37,7 +39,8 @@ export const JOINT_OUT = OUTPUTS.indexOf('j0');
 // What new links may use: kinematic bodies ignore body senses and joints; physical ones ignore turn/throttle and joints they lack.
 export function linkable(rays, physical, joints) {
   const social = SCALARS.flatMap((name, i) => (SOCIAL.has(name) ? [RAY_CAP * 3 + i] : []));
-  const outputs = physical ? [2, 3, 4, 5, 6, ...Array.from({ length: Math.min(joints, MAX_JOINTS) }, (_, j) => JOINT_OUT + j)] : [0, 1, 2, 3, 4, 5, 6];
+  const tools = ['grab', 'drop', 'use'].map((k) => OUTPUTS.indexOf(k));
+  const outputs = physical ? [2, 3, 4, 5, 6, ...Array.from({ length: Math.min(joints, MAX_JOINTS) }, (_, j) => JOINT_OUT + j), ...tools] : [0, 1, 2, 3, 4, 5, 6, ...tools];
   return { inputs: new Set([...usableInputs(rays, physical), ...social]), outputs: new Set(outputs) };
 }
 

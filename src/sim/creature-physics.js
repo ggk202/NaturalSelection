@@ -126,6 +126,11 @@ function applyForces(world) {
         const d = Math.min(2 * Math.sqrt(BALANCE) * c.stats.balance * b.mass(), 0.5 * Imin / h);
         b.addTorque({ x: -k * up[2] - d * av.x, y: 0, z: k * up[0] - d * av.z }, true); // k·(up × ŷ), damped
       }
+      if (part.wing || part.fin) { // plate drag along the plate's normal: flapping makes lift or thrust
+        const n = qrot(qmul(arr(b.rotation()), part.rot), [0, 1, 0]), u = b.linvel(), vn = u.x * n[0] + u.y * n[1] + u.z * n[2];
+        const k = Math.min((wet ? 20 : part.wing ? 3 : 0.3) * s[0] * s[2], 0.5 * b.mass() * SUBSTEPS / world.settings.dt); // stable per substep
+        b.addForce({ x: -k * vn * n[0], y: -k * vn * n[1], z: -k * vn * n[2] }, true);
+      }
       b.setLinearDamping(wet ? 2 : 0.1);
       b.setAngularDamping(touching ? 4 : 0.5); // rolling resistance on the ground
       if (wet) b.addForce({ x: 0, y: 1.2 * 9.81 * s[0] * s[1] * s[2] * density(part), z: 0 }, true);

@@ -30,7 +30,7 @@ export function paramsFromPlan(plan) {
   const legs = parts.filter((q) => q.parent === 0 && elongated(q));
   const legSet = new Set(legs.map((q) => q.index));
   const toes = parts.filter((q) => legSet.has(q.parent)).length;
-  let limbVol = 0, eyes = 0, eyeW = 0, antennae = 0, mouth = 0, total = 0, fur = 0, shell = 0, spikes = 0, mass = 0, grippers = 0, dexterity = 0, strength = 0;
+  let limbVol = 0, eyes = 0, eyeW = 0, antennae = 0, mouth = 0, total = 0, fur = 0, shell = 0, spikes = 0, mass = 0, grippers = 0, dexterity = 0, strength = 0, wingArea = 0, fins = 0;
   const depth = (q) => (q.parent < 0 ? 0 : 1 + depth(parts[q.parent]));
   for (const q of parts) {
     const v = vol(q);
@@ -41,6 +41,8 @@ export function paramsFromPlan(plan) {
     eyes += q.eyes; eyeW += q.eyes * q.eyeSize; antennae += q.antennae; mouth = Math.max(mouth, q.mouth);
     if (q.gripper) { grippers++; dexterity += 0.15 * Math.min(4, depth(q)); } // fingers further out the limb are finer
     if (q.joint) strength += q.joint.strength;
+    if (q.wing) wingArea += q.size[0] * q.size[2];
+    if (q.fin) fins++;
   }
   return {
     size: Math.cbrt(vol(root) / ROOT_VOL), legs: legs.length, digits: legs.length ? Math.round(toes / legs.length) : 0,
@@ -49,13 +51,14 @@ export function paramsFromPlan(plan) {
     insulation: total ? fur / total : 0,
     // physical extras
     parts: parts.length, joints: parts.length - 1, mass, rootVol: vol(root), grippers, dexterity: clamp01(dexterity),
-    shell: total ? shell / total : 0, spikes: total ? spikes / total : 0, muscle: strength, limbVol,
+    shell: total ? shell / total : 0, spikes: total ? spikes / total : 0, muscle: strength, limbVol, wingArea, fins,
   };
 }
 
 export function deriveStats(body) {
   const b = body.nodes ? paramsFromPlan(body) : body;
-  const swim = clamp01(0.12 * b.digits + 0.2 * b.size - 0.06 * b.legs); // webbing + bulk; legs drag
+  const swim = clamp01(0.12 * b.digits + 0.2 * b.size - 0.06 * b.legs + 0.3 * (b.fins || 0)); // webbing + bulk + fins; legs drag
+  const flight = clamp01((b.wingArea || 0) / (2 * (b.mass ?? ROOT_VOL * b.size ** 3))); // wing area per unit mass
   const climb = clamp01(0.2 * b.digits * Math.min(1, b.legs / 2)); // grip needs digits on at least two legs
   const legPower = b.legs * (1 + 0.1 * b.digits);
   const shell = b.shell || 0, spikes = b.spikes || 0, grippers = b.grippers || 0, joints = b.joints || 0;
@@ -76,8 +79,9 @@ export function deriveStats(body) {
       + 0.002 * b.antennae + 0.002 * b.mouth + 0.002 * b.insulation + 0.003 * swim + 0.003 * climb
       + 0.01 * shell + 0.008 * spikes + 0.003 * grippers + 0.0015 * joints
       + 0.05 * (b.limbVol || 0) // bulky limbs are costly to carry
-      + 0.02 * (b.balance ?? 0), // the righting reflex costs energy
-    swim, climb,
+      + 0.02 * (b.balance ?? 0) // the righting reflex costs energy
+      + 0.03 * flight,
+    swim, climb, flight, flies: flight > 0.5,
     camo: clamp01(1.2 - b.size), // only matters in forest
     maxEnergy: 10 * b.size ** 2,
     // physical-body stats

@@ -8,7 +8,7 @@ import { createPhysics } from './physics.js';
 import { expandBody } from './bodyplan.js';
 import { PHYS_PARTS } from './creature-physics.js';
 
-export const SCHEMA_VERSION = 6; // 6: body plans
+export const SCHEMA_VERSION = 7; // 6: body plans; 7: objects, tool-use brain I/O
 
 const g2j = (g) => ({ body: cloneBodyPlan(g.body), brain: cloneBrain(g.brain) });
 const j2g = g2j;
@@ -25,13 +25,14 @@ export function serializeWorld(w) {
     calls: w.calls.map((k) => ({ ...k, genome: g2j(k.genome) })), callCounts: [...w.callCounts], stepCount: w.stepCount,
     nextNodeId: w.nextNodeId,
     food: w.food.map((f) => ({ ...f })),
+    objects: w.objects.map((o) => ({ ...o })),
     hazards: w.env.hazards.map((h) => ({ ...h })),
     elite: w.elite.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
     eliteCarn: w.eliteCarn.map((e) => ({ children: e.children, genome: g2j(e.genome) })),
     carnivoresSeen: w.carnivoresSeen,
     tracker: {
       threshold: t.threshold, nextId: t.nextId, nextCheckpointId: t.nextCheckpointId,
-      seenLegs: t.seenLegs ? [...t.seenLegs] : null, firstCarnivores: t.firstCarnivores, firstAmbush: !!t.firstAmbush, firstMeaning: { ...t.firstMeaning }, firstDextrous: !!t.firstDextrous,
+      seenLegs: t.seenLegs ? [...t.seenLegs] : null, firstCarnivores: t.firstCarnivores, firstAmbush: !!t.firstAmbush, firstMeaning: { ...t.firstMeaning }, firstDextrous: !!t.firstDextrous, firsts: { ...t.firsts },
       species: t.species.map(({ members, repGenome, ...s }) => ({ ...s, repGenome: g2j(repGenome) })),
     },
     stats: { interval: w.stats.interval, series: w.stats.series },
@@ -52,6 +53,7 @@ export function deserializeWorld(o) {
   });
   if (o.physics) w.physics = createPhysics(w.terrain, new Uint8Array(fromB64(o.physics)));
   w.food = o.food.map((f) => ({ ...f }));
+  w.objects = o.objects.map((x) => ({ ...x }));
   w.env = new Environment(o.settings.env, w.rng, o.settings.worldSize, () => 0);
   w.env.hazards = o.hazards.map((h) => ({ ...h }));
   w.rng.setState(o.rng); // after Environment, which consumes rng
@@ -59,7 +61,7 @@ export function deserializeWorld(o) {
   w.eliteCarn = o.eliteCarn.map((e) => ({ children: e.children, genome: j2g(e.genome) }));
   w.carnivoresSeen = o.carnivoresSeen;
   const t = w.tracker, ot = o.tracker;
-  Object.assign(t, { threshold: ot.threshold, nextId: ot.nextId, nextCheckpointId: ot.nextCheckpointId, firstCarnivores: ot.firstCarnivores, firstAmbush: ot.firstAmbush, firstMeaning: { ...ot.firstMeaning }, firstDextrous: !!ot.firstDextrous });
+  Object.assign(t, { threshold: ot.threshold, nextId: ot.nextId, nextCheckpointId: ot.nextCheckpointId, firstCarnivores: ot.firstCarnivores, firstAmbush: ot.firstAmbush, firstMeaning: { ...ot.firstMeaning }, firstDextrous: !!ot.firstDextrous, firsts: { ...ot.firsts } });
   t.seenLegs = ot.seenLegs ? new Set(ot.seenLegs) : null;
   t.species = ot.species.map((s) => ({ ...s, repGenome: j2g(s.repGenome), members: [] }));
   w.stats.interval = o.stats.interval;

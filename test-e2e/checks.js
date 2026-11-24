@@ -421,3 +421,17 @@ checks['fast-forward works with physical bodies, and Stop ends it promptly'] = a
   assert.equal(await page.evaluate(() => window.__app.paused), false);
   assert.deepEqual(errors, []);
 };
+
+checks['objects render, held ones with their holder'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const r = await page.evaluate(async () => {
+    window.__app.paused = true;
+    const w = window.__world, c = w.creatures[0];
+    w.objects.push({ id: w.nextId++, type: 'stick', x: c.x, z: c.z, holder: c.id, sharp: true }, { id: w.nextId++, type: 'stone', x: 10, z: 10, holder: null });
+    await new Promise((res) => setTimeout(res, 300));
+    const n = (name) => window.__view.scene.getObjectByName(name).count;
+    return { spear: n('obj-spear'), stone: n('obj-stone') };
+  });
+  assert.ok(r.spear >= 1 && r.stone >= 1, JSON.stringify(r));
+  assert.deepEqual(errors, []);
+};

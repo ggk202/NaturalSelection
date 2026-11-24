@@ -14,7 +14,7 @@ const GEOMS = {
 };
 const PER_CREATURE = { segments: PHYS_PARTS + 8, eyes: 12, mouths: 2, antennae: 8, spikes: 24, claws: 16 };
 const FIXED_COLOR = { eyes: 0xf4f4f0, mouths: 0x3a2a2a, claws: 0x2c2620 };
-const red = new THREE.Color(0xd8402a), fur = new THREE.Color(0x9a7a55);
+const red = new THREE.Color(0xd8402a), fur = new THREE.Color(0x9a7a55), wingC = new THREE.Color(0xf2efe6), finC = new THREE.Color(0x3d7fc4);
 
 export function creatureColor(traits, target = new THREE.Color()) {
   return target.setHSL(traits.hue, 0.55, 0.55).lerp(red, Math.max(0, traits.diet - 0.3) / 0.7 * 0.8);
@@ -89,6 +89,7 @@ export function createCreatureRenderer(scene, maxCreatures, heightAt) {
         }
         tint.copy(color);
         if (p.covering === 'fur') tint.lerp(fur, 0.5); else if (p.covering === 'shell') tint.multiplyScalar(0.55);
+        if (p.wing) tint.lerp(wingC, 0.6); else if (p.fin) tint.lerp(finC, 0.6);
         const i = put('segments', m.copy(partM).multiply(new THREE.Matrix4().makeScale(...p.size)), tint);
         if (i >= 0) ids[i] = c.id;
         for (const [type, pos, scl, rot] of organsOf(p)) {

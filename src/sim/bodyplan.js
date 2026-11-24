@@ -37,7 +37,7 @@ function basisQuat(d) {
 }
 
 // ---------- genome ----------
-const node = (o) => ({ size: [1, 0.5, 0.5], covering: 'none', eyes: 0, eyeSize: 0.6, mouth: 0, antennae: 0, gripper: false, edges: [], ...o });
+const node = (o) => ({ size: [1, 0.5, 0.5], covering: 'none', eyes: 0, eyeSize: 0.6, mouth: 0, antennae: 0, gripper: false, wing: false, fin: false, edges: [], ...o });
 const edge = (o) => ({ to: 0, face: 1, u: 0, v: 0, yaw: 0, pitch: 0, axis: 'y', lo: -0.6, hi: 0.6, strength: 1, recur: 1, symmetric: false, ...o });
 
 export const TEMPLATES = {
@@ -122,7 +122,7 @@ export function expandBody(plan, maxParts = 24) {
 }
 
 function makePart(n, nodeIndex, parent, pos, rot, joint, mirror) {
-  return { parent, node: nodeIndex, size: [...n.size], pos, rot, joint, mirror, covering: n.covering, eyes: n.eyes, eyeSize: n.eyeSize, mouth: n.mouth, antennae: n.antennae, gripper: n.gripper };
+  return { parent, node: nodeIndex, size: [...n.size], pos, rot, joint, mirror, covering: n.covering, eyes: n.eyes, eyeSize: n.eyeSize, mouth: n.mouth, antennae: n.antennae, gripper: n.gripper, wing: !!n.wing, fin: !!n.fin };
 }
 
 function attach(n, nodeIndex, parent, parentIndex, e, mirror) {
@@ -151,6 +151,7 @@ function attach(n, nodeIndex, parent, parentIndex, e, mirror) {
 function anatomize(p) {
   p.nodes.forEach((n, i) => {
     if (i === 0 || n.eyes || n.mouth) return;
+    if (n.wing || n.fin) { n.size[1] = Math.min(n.size[1], 0.2 * n.size[0]); return; } // thin plates, as wide as they like
     n.size[1] = Math.min(n.size[1], 0.6 * n.size[0]);
     n.size[2] = Math.min(n.size[2], 0.6 * n.size[0]);
   });
@@ -167,6 +168,8 @@ export function mutateBodyPlan(plan, rate, rng) {
     if (rng.next() < rate) n.mouth = clamp(j(n.mouth, 0.15), 0, 1.5);
     if (rng.next() < rate) n.antennae = clamp(n.antennae + (rng.next() < 0.5 ? -1 : 1), 0, 4);
     if (rng.next() < rate * 0.2) n.gripper = !n.gripper;
+    if (rng.next() < rate * 0.15) n.wing = !n.wing;
+    if (rng.next() < rate * 0.15) n.fin = !n.fin;
     for (const e of n.edges) {
       if (rng.next() < rate) { e.u = clamp(j(e.u, 0.15), -1, 1); e.v = clamp(j(e.v, 0.15), -1, 1); }
       if (rng.next() < rate) { e.yaw = clamp(j(e.yaw, 0.2), -1.4, 1.4); e.pitch = clamp(j(e.pitch, 0.2), -1.4, 1.4); }
@@ -200,11 +203,13 @@ export function summarizeBody(plan, maxParts = 24) {
   const hit = maxParts === 24 && summaries.get(plan);
   if (hit) return hit;
   const parts = expandBody(plan, maxParts);
-  const s = { parts: parts.length, limbs: 0, grippers: 0, fur: 0, shell: 0, spikes: 0, eyes: 0, mouth: 0, antennae: 0, mass: 0, length: 0 };
+  const s = { parts: parts.length, limbs: 0, grippers: 0, wings: 0, fins: 0, fur: 0, shell: 0, spikes: 0, eyes: 0, mouth: 0, antennae: 0, mass: 0, length: 0 };
   let minX = Infinity, maxX = -Infinity;
   for (const p of parts) {
     if (p.parent >= 0 && p.size[0] >= 2 * Math.max(p.size[1], p.size[2])) s.limbs++; // elongated = limb
     if (p.gripper) s.grippers++;
+    if (p.wing) s.wings++;
+    if (p.fin) s.fins++;
     if (p.covering !== 'none') s[p.covering]++;
     s.eyes += p.eyes; s.mouth = Math.max(s.mouth, p.mouth); s.antennae += p.antennae;
     s.mass += p.size[0] * p.size[1] * p.size[2] * (p.covering === 'shell' ? 1.6 : 1);
@@ -215,7 +220,7 @@ export function summarizeBody(plan, maxParts = 24) {
   return s;
 }
 
-const SUMMARY_SCALE = { parts: 24, limbs: 20, grippers: 6, fur: 12, shell: 12, spikes: 12, eyes: 12, mouth: 1.5, antennae: 8, mass: 4, length: 6 };
+const SUMMARY_SCALE = { parts: 24, limbs: 20, grippers: 6, wings: 6, fins: 6, fur: 12, shell: 12, spikes: 12, eyes: 12, mouth: 1.5, antennae: 8, mass: 4, length: 6 };
 export function bodyPlanDistance(a, b) {
   const sa = summarizeBody(a), sb = summarizeBody(b);
   let d = 0, n = 0;

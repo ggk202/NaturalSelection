@@ -38,6 +38,7 @@ export class SpeciesTracker {
     this.seenLegs = null; // global "first N-legged lineage"
     this.firstCarnivores = false;
     this.firstMeaning = {};
+    this.firsts = {}; // one-off milestones (tool use, …)
   }
 
   // biomeOf(creature) -> biome key; optional so callers without terrain still work.

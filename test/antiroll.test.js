@@ -153,12 +153,12 @@ test('new brain links only use outputs and inputs the body can use', async () =>
   const r = createRng(5);
   let g = { body: plan('worm'), brain: biasBrain() };
   for (let i = 0; i < 300; i++) g = mutate(g, 0.5, r, undefined, { physical: false });
-  for (const k of g.brain.conns) { assert.ok(k.to < N_IN + JOINT_OUT || k.to >= 1000, `kinematic link to joint ${k.to}`); assert.ok(!bodySense.has(k.from), `kinematic link from body sense ${INPUT_NAMES[k.from]}`); }
+  for (const k of g.brain.conns) { assert.ok(k.to < N_IN + JOINT_OUT || k.to >= N_IN + JOINT_OUT + 24, `kinematic link to joint ${k.to}`); assert.ok(!bodySense.has(k.from), `kinematic link from body sense ${INPUT_NAMES[k.from]}`); }
   let h = { body: plan('worm'), brain: biasBrain() };
   for (let i = 0; i < 300; i++) { // each new link must fit the body it was added to (bodies also mutate)
     const before = new Set(h.brain.conns.map((k) => `${k.from}>${k.to}`)), oldTargets = new Set(h.brain.conns.map((k) => k.to));
     h = mutate(h, 0.5, r, undefined, { physical: true });
     const joints = expandBody(h.body, 25).length - 1;
-    for (const k of h.brain.conns) if (!before.has(`${k.from}>${k.to}`) && !oldTargets.has(k.to) && k.to >= N_IN + JOINT_OUT && k.to < 1000) assert.ok(k.to - N_IN - JOINT_OUT < joints, `link to missing joint ${k.to - N_IN - JOINT_OUT} of ${joints}`);
+    for (const k of h.brain.conns) if (!before.has(`${k.from}>${k.to}`) && !oldTargets.has(k.to) && k.to >= N_IN + JOINT_OUT && k.to < N_IN + JOINT_OUT + 24) assert.ok(k.to - N_IN - JOINT_OUT < joints, `link to missing joint ${k.to - N_IN - JOINT_OUT} of ${joints}`);
   }
 });

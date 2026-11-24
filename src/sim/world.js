@@ -14,6 +14,9 @@ export { SYLLABLES };
 import { StatsRecorder } from './stats.js';
 import { createTerrain } from './terrain.js';
 import { BIOMES, BIOME } from './biomes.js';
+import { initObjects, rebuildObjectGrid, senseObjects, act, stepObjects, onEat, spearBonus, hurt } from './tools.js';
+import { OUTPUTS } from './neat.js';
+const OUT = { grab: OUTPUTS.indexOf('grab'), drop: OUTPUTS.indexOf('drop'), use: OUTPUTS.indexOf('use') };
 
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 const CALL_ON = 0.6;
@@ -65,6 +68,7 @@ export class World {
     this.carnivoresSeen = false;
     this.foodGrid = new Grid(8, s.worldSize);
     this.creatureGrid = new Grid(8, s.worldSize);
+    this.objectGrid = new Grid(8, s.worldSize);
     this.terrain = createTerrain(s);
     this.physics = s.locomotion === 'physical' ? createPhysics(this.terrain) : null;
     this.env = new Environment(s.env, this.rng, s.worldSize, () => this.nextId++);
@@ -73,6 +77,17 @@ export class World {
       this.spawn(randomGenome(this.rng, !!this.physics), p.x, p.z);
     }
     for (let i = 0; i < this.foodCap / 2; i++) this.spawnOneFood();
+    initObjects(this);
+  }
+
+  // A one-off "first ever" milestone (tool use and the like).
+  milestone(c, key, title) {
+    const t = this.tracker;
+    if (t.firsts[key]) return;
+    t.firsts[key] = true;
+    const cp = { id: t.nextCheckpointId++, time: this.time, speciesId: c.speciesId, kind: 'first', title, genome: cloneGenome(c.genome), avgBody: { ...traitsOf(c.genome) } };
+    this.checkpoints.push(cp);
+    this.emit({ type: 'checkpoint', checkpoint: cp });
   }
 
   // Food settings are per 200×200 area, so density stays the same at any world size.
@@ -136,7 +151,7 @@ export class World {
   }
 
   // Energy/s lost to the biome itself (drowning in lakes scales with lack of swimming).
-  biomeDrain(c, b) { return b.id === BIOME.lake ? b.drain * (1 - c.stats.swim) ** 2 : b.drain; }
+  biomeDrain(c, b) { return b.id === BIOME.lake ? (c.stats.flies ? 0 : b.drain * (1 - c.stats.swim) ** 2) : b.drain; }
 
   emit(e) {
     this.events.push({ time: this.time, ...e });
@@ -181,6 +196,7 @@ export class World {
     if (o && (!c.kinCache || c.kinCache.a !== c.genome || c.kinCache.b !== o.genome)) c.kinCache = { a: c.genome, b: o.genome, v: relatedness(c.genome, o.genome) };
     out[S.kinNear] = o ? c.kinCache.v : 0;
     this.hear(c, out);
+    senseObjects(this, c, out, S);
     senseBody(this, c, out, S);
     return out;
   }
@@ -208,6 +224,7 @@ export class World {
   rebuildGrids() {
     this.foodGrid.clear(); for (const f of this.food) this.foodGrid.insert(f);
     this.creatureGrid.clear(); for (const c of this.creatures) this.creatureGrid.insert(c);
+    rebuildObjectGrid(this);
   }
 
   spawnFood(dt) {
@@ -230,6 +247,7 @@ export class World {
     c.energy = Math.min(c.stats.maxEnergy, c.energy + hit.energy * c.stats.digestPlant);
     c.actionCounters.ate++;
     remember(c.map, c.x, c.z, 'food', 0.5);
+    onEat(this, c, hit);
   }
 
   reproduce(c) {
@@ -290,7 +308,8 @@ export class World {
       if (c.strikeWindow > 0) c.strikeWindow--;
       if (c.threatNear && throttle > 0.3 && Math.abs(o[0]) > 0.5) c.actionCounters.fled++; // moving and turning hard while threatened
       this.eat(c);
-      if (o[2] > 0.5 && st.attack > 0.05) this.attack(c);
+      if (o[2] > 0.5 && st.attack + spearBonus(this, c) > 0.05) this.attack(c);
+      act(this, c, o, OUT);
       if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c), this.stepCount); // base rates, sampled
       // Dead-zone: a drifting unwired output (≈0.5) must not murmur constantly.
       if (o[4] > CALL_ON) this.call(c, (o[4] - CALL_ON) / (1 - CALL_ON), (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
@@ -307,6 +326,7 @@ export class World {
         this.track(c, d);
       });
     }
+    stepObjects(this);
     for (const c of this.creatures) {
       if (c.alive && (c.energy <= 0 || c.age > 60 * traitsOf(c.genome).size || c.physicsFault)) {
         c.alive = false;
@@ -374,6 +394,7 @@ export class World {
 
   // Speed multiplier from biome, water and slope; 0 when a slope is too steep to climb.
   terrainSpeed(c) {
+    if (c.stats.flies && !this.physics) return 1; // flyers cross water and cliffs at land speed
     const b = this.biomeOf(c), s = this.terrain.slopeAlong(c.x, c.z, c.heading);
     if (s > 0.6 && c.stats.climb < s - 0.4) return 0;
     // Water slows everyone; swimming recovers most (not all) of the land speed.
@@ -387,7 +408,7 @@ export class World {
   // Extra energy/s from temperature, biome and hazards; reuses the inputs just sensed.
   envCost(c, sensed) {
     const t = sensed[S.temperature], st = c.stats, cfg = this.settings.env;
-    let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist));
+    let cost = 0.2 * (Math.max(0, -t - st.coldResist) + Math.max(0, t - st.heatResist)) * (c.sheltered ? 0.3 : 1);
     cost += this.biomeDrain(c, this.biomeOf(c));
     if (sensed[S.hazardDist] === 0) cost += cfg.hazardDamage;
     return cost;
@@ -417,7 +438,7 @@ export class World {
     });
     if (!target) return;
     // Lakes are a refuge from hunters that can't swim.
-    if (c.stats.swim < 0.5 && this.terrain.isWater(target.x, target.z)) return;
+    if (c.stats.swim < 0.5 && !c.stats.flies && this.terrain.isWater(target.x, target.z)) return;
     c.actionCounters.attacked++;
     if (c.strikeWindow > 0) {
       c.strikeWindow = 0;
@@ -425,7 +446,7 @@ export class World {
       this.emit({ type: 'ambush', id: c.id });
       for (const cp of this.tracker.noteAmbush(c, this.time)) { this.checkpoints.push(cp); this.emit({ type: 'checkpoint', checkpoint: cp }); }
     }
-    const dmg = Math.min(Math.max(target.energy, 0), c.stats.attack * this.settings.dt * 5);
+    const dmg = Math.min(Math.max(target.energy, 0), (c.stats.attack + spearBonus(this, c)) * this.settings.dt * 5 * (target.sheltered ? 0.5 : 1));
     target.energy -= dmg;
     c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.8 * dmg * c.stats.digestMeat); // feeding while biting
     if (target.energy > 0) return;

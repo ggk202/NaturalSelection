@@ -31,6 +31,7 @@ export function buildCreature(genome) {
     part.position.fromArray(p.pos); part.quaternion.fromArray(p.rot);
     const tint = color.clone();
     if (p.covering === 'fur') tint.lerp(new THREE.Color(0x9a7a55), 0.5); else if (p.covering === 'shell') tint.multiplyScalar(0.55);
+    if (p.wing) tint.lerp(new THREE.Color(0xf2efe6), 0.6); else if (p.fin) tint.lerp(new THREE.Color(0x3d7fc4), 0.6);
     const box = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ color: tint, flatShading: true }));
     box.scale.fromArray(p.size);
     part.add(box);

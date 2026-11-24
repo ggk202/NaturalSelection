@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { OrbitControls } from '../../vendor/OrbitControls.js';
 import { createCreatureRenderer } from './creatures.js';
 import { createProps } from './props.js';
+import { createObjectRenderer } from './objects.js';
 import { BIOMES } from '../sim/biomes.js';
 import { MAX_HEIGHT } from '../sim/terrain.js';
 import { recall } from '../sim/memory.js';
@@ -32,7 +33,7 @@ export function createScene(canvas) {
   sun.position.set(40, 80, 20);
   scene.add(hemi, sun);
 
-  let creatures, food, terrain, water, props, heightAt, hazardGroup, hazardKey = '', W = 0;
+  let creatures, objects, food, terrain, water, props, heightAt, hazardGroup, hazardKey = '', W = 0;
   const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
 
   // Call rings: expanding rings at callers, coloured by syllable.
@@ -117,6 +118,7 @@ export function createScene(canvas) {
     hazardKey = '';
     scene.add(terrain, water, props, food, hazardGroup);
     if (!creatures) creatures = createCreatureRenderer(scene, MAX_RENDERED, (x, z) => heightAt(x, z));
+    if (!objects) objects = createObjectRenderer(scene, 400, (x, z) => heightAt(x, z));
     camera.position.set(W / 2, W * 0.45, W / 2 + W * 0.55);
     controls.target.set(W / 2, 0, W / 2);
   }
@@ -130,6 +132,7 @@ export function createScene(canvas) {
       camera.updateProjectionMatrix();
     }
     creatures.update(world);
+    objects.update(world);
     updateRings(world);
     food.count = Math.min(world.food.length, food.instanceMatrix.count);
     for (let i = 0; i < food.count; i++) {
