@@ -3,8 +3,15 @@ import { GENES, genomeDistance, cloneGenome, traitsOf } from './genome.js';
 export const SYLLABLES = ['ka', 'ru', 'mi', 'to'];
 const MEANINGS = [['threat', 'alarm'], ['food', 'food'], ['kin', 'kin']];
 const add = (o, ctx) => { o.n++; if (ctx.threat) o.threat++; if (ctx.food) o.food++; if (ctx.kin) o.kin++; };
-const halve = (o) => { for (const k of ['n', 'threat', 'food', 'kin']) o[k] = Math.floor(o[k] / 2); };
+const halve = (o) => {
+  for (const k of ['n', 'threat', 'food', 'kin']) o[k] = Math.floor(o[k] / 2);
+  for (const m of [o.biomes, o.dirs]) if (m) for (const k in m) m[k] = Math.floor(m[k] / 2);
+};
 const blank = () => ({ n: 0, threat: 0, food: 0, kin: 0 });
+const tallyPlace = (o, ctx) => {
+  if (ctx.biome) (o.biomes ||= {})[ctx.biome] = (o.biomes[ctx.biome] || 0) + 1;
+  if (ctx.dir) (o.dirs ||= {})[ctx.dir] = (o.dirs[ctx.dir] || 0) + 1;
+};
 const CALL_GAP = 40, CALLER_MEMORY = 200, MIN_CALLERS = 5; // steps; distinct callers needed for a word
 
 const INT_GENES = GENES.filter((g) => g.int && g.key !== 'parts').map((g) => g.key); // part count is redundant with the specific shifts
@@ -47,13 +54,14 @@ export class SpeciesTracker {
   sigOf(c) {
     const s = c.speciesId != null && this.species.find((x) => x.id === c.speciesId);
     if (!s) return null;
-    return (s.sig ||= { calls: SYLLABLES.map(() => ({ ...blank(), callers: [] })), callerBase: SYLLABLES.map(blank), base: blank() });
+    return (s.sig ||= { calls: SYLLABLES.map(() => ({ ...blank(), callers: [] })), callerBase: SYLLABLES.map(blank), base: blank(), words: {} });
   }
   // Everyday context sample; also credited to the syllable this creature has used recently.
   noteContext(c, ctx, step = 0) {
     const g = this.sigOf(c);
     if (!g) return;
     add(g.base, ctx);
+    tallyPlace(g.base, ctx);
     if (c.lastCall && step - c.lastCall.step < CALLER_MEMORY) add(g.callerBase[c.lastCall.syll], ctx);
   }
   // A call counts as one event per caller per CALL_GAP steps; distinct callers are tracked.
@@ -67,6 +75,46 @@ export class SpeciesTracker {
     const k = g.calls[syll];
     add(k, ctx);
     if (!k.callers.includes(c.id)) { k.callers.push(c.id); if (k.callers.length > MIN_CALLERS * 2) k.callers.shift(); }
+  }
+
+  // A finished word of two or more syllables: one event per caller per CALL_GAP steps.
+  noteWord(c, word, ctx, step = 0) {
+    const g = this.sigOf(c);
+    if (!g || (c.wordNoted != null && step - c.wordNoted < CALL_GAP)) return;
+    c.wordNoted = step;
+    const k = (g.words ||= {})[word] ||= { ...blank(), callers: [] };
+    add(k, ctx);
+    tallyPlace(k, ctx);
+    if (!k.callers.includes(c.id)) { k.callers.push(c.id); if (k.callers.length > MIN_CALLERS * 2) k.callers.shift(); }
+    const keys = Object.keys(g.words);
+    if (keys.length > 64) delete g.words[keys.reduce((a, b) => (g.words[a].n <= g.words[b].n ? a : b))]; // forget the rarest
+  }
+
+  // Words: like syllables, plus place — a biome or compass direction (of remembered food) the word
+  // reliably goes with, well above how often the species is there anyway.
+  // shortcut: words compare with the species' base rates, not each caller's own; upgrade if families skew it.
+  wordMeanings(s, cp) {
+    const g = s.sig;
+    for (const [word, k] of Object.entries(g.words || {})) {
+      if (k.n < 30 || k.callers.length < MIN_CALLERS || g.base.n < 20) continue;
+      const labels = [];
+      for (const [ctx, label] of MEANINGS) { const p = k[ctx] / k.n; if (p >= 0.6 && p >= 2 * (g.base[ctx] / g.base.n)) labels.push(label); }
+      const place = (key, min, ratio) => {
+        const top = Object.keys(k[key] || {}).sort((a, b) => k[key][b] - k[key][a])[0];
+        if (!top) return;
+        const p = k[key][top] / k.n, base = ((g.base[key] || {})[top] || 0) / g.base.n;
+        if (p >= min && p >= ratio * base) labels.push(top);
+      };
+      place('biomes', 0.6, 1.5);
+      place('dirs', 0.5, 2);
+      if (!labels.length) continue;
+      s.lexicon[word] = labels;
+      if (s.meant[`word:${word}`]) continue;
+      s.meant[`word:${word}`] = true;
+      cp(s, 'first', `Species ${s.id} coined a word: "${word}" (${labels.join(', ')})`);
+      if (!this.firstMeaning.word) { this.firstMeaning.word = true; cp(s, 'first', 'First multi-syllable word'); }
+      if (!this.firstMeaning.place && labels.some((l) => !MEANINGS.some(([, m]) => m === l))) { this.firstMeaning.place = true; cp(s, 'first', 'First word describing a place'); }
+    }
   }
 
   // A syllable means a context when, across several callers, it reliably accompanies it (≥60%)
@@ -89,8 +137,9 @@ export class SpeciesTracker {
         if (!this.firstMeaning[ctx]) { this.firstMeaning[ctx] = true; cp(s, 'first', `First ${label} call`); }
       }
     });
+    this.wordMeanings(s, cp);
     // Keep the statistics recent: halve once a species has called a lot.
-    if (g.calls.reduce((a, c) => a + c.n, 0) > 2000) { for (const c of g.calls) halve(c); for (const c of g.callerBase) halve(c); halve(g.base); }
+    if (g.calls.reduce((a, c) => a + c.n, 0) > 2000) { for (const c of g.calls) halve(c); for (const c of g.callerBase) halve(c); for (const w of Object.values(g.words || {})) halve(w); halve(g.base); }
   }
 
   // Ambush milestones: once globally, once per species.
@@ -193,4 +242,14 @@ export class SpeciesTracker {
     }
     return out;
   }
+}
+
+// English gloss of a word (syllable indices) from a species lexicon: the whole word if known,
+// else its syllables' meanings joined; null when any part is unknown.
+export function translate(lexicon, word) {
+  if (!lexicon || !word || !word.length) return null;
+  const whole = lexicon[word.map((k) => SYLLABLES[k]).join('-')];
+  if (whole) return whole.join(', ');
+  const parts = word.map((k) => lexicon[SYLLABLES[k]]);
+  return parts.every(Boolean) ? parts.map((p) => p[0]).join(' + ') : null;
 }

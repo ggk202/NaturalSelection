@@ -47,7 +47,7 @@ export function paramsFromPlan(plan) {
   return {
     size: Math.cbrt(vol(root) / ROOT_VOL), legs: legs.length, digits: legs.length ? Math.round(toes / legs.length) : 0,
     eyes, eyeSize: eyes ? eyeW / eyes : 0.5, antennae, mouth,
-    diet: plan.diet ?? 0, hue: plan.hue ?? 0.5, reproThreshold: plan.reproThreshold ?? 0.7, balance: plan.balance ?? 0.5,
+    diet: plan.diet ?? 0, hue: plan.hue ?? 0.5, reproThreshold: plan.reproThreshold ?? 0.7, balance: plan.balance ?? 0.5, attention: Math.round(plan.attention ?? 1),
     insulation: total ? fur / total : 0,
     // physical extras
     parts: parts.length, joints: parts.length - 1, mass, rootVol: vol(root), grippers, dexterity: clamp01(dexterity),
@@ -80,13 +80,14 @@ export function deriveStats(body) {
       + 0.01 * shell + 0.008 * spikes + 0.003 * grippers + 0.0015 * joints
       + 0.05 * (b.limbVol || 0) // bulky limbs are costly to carry
       + 0.02 * (b.balance ?? 0) // the righting reflex costs energy
-      + 0.03 * flight,
+      + 0.03 * flight
+      + 0.003 * (b.attention ?? 1), // a longer attention span costs brain power
     swim, climb, flight, flies: flight > 0.5,
     camo: clamp01(1.2 - b.size), // only matters in forest
     maxEnergy: 10 * b.size ** 2,
     // physical-body stats
     mass: b.mass ?? rootVol, joints, grippers, shell, spikes,
-    dexterity: b.dexterity || 0, balance: b.balance ?? 0,
+    dexterity: b.dexterity || 0, balance: b.balance ?? 0, attention: b.attention ?? 1,
     endurance: 2 + 8 * rootVol, // stamina pool from torso mass
     staminaRegen: 0.6,
   };

@@ -40,6 +40,7 @@ const PRECACHE = [
   './src/sim/world.js',
   './src/storage.js',
   './src/ui/brain-graph.js',
+  './src/ui/bubbles.js',
   './src/ui/charts.js',
   './src/ui/controls.js',
   './src/ui/dom.js',

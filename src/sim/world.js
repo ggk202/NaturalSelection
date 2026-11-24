@@ -21,6 +21,8 @@ const OUT = { grab: OUTPUTS.indexOf('grab'), drop: OUTPUTS.indexOf('drop'), use:
 const LABEL_WINDOW = 20, SPECIES_EVERY = 5;
 const CALL_ON = 0.6;
 const CALL_COST = 0.05; // energy/s at full loudness (≈ base upkeep; 0.3 starved founders)
+const WORD_HOLD = 10; // steps a syllable is held before it repeats within a word
+const OCTANTS = ['east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north', 'northeast']; // +x east, +z south
 const AMBUSH_WAIT = 60, AMBUSH_STRIKE = 40; // steps: still ≥3 s, then strike within 2 s
 
 export const DEFAULT_SETTINGS = {
@@ -197,6 +199,13 @@ export class World {
     out[S.kinNear] = o ? c.kinCache.v : 0;
     this.hear(c, out);
     senseObjects(this, c, out, S);
+    out[S.compassSin] = Math.sin(c.heading); out[S.compassCos] = Math.cos(c.heading);
+    if ((this.stepCount + c.id) % 20 === 0 || c.memFood === undefined) c.memFood = bestFood(c.map);
+    if (c.memFood) {
+      const dx = this.delta(c.x, c.memFood.x), dz = this.delta(c.z, c.memFood.z), a = Math.atan2(dz, dx) - c.heading;
+      out[S.memFoodSin] = Math.sin(a); out[S.memFoodCos] = Math.cos(a);
+      out[S.memFoodDist] = Math.min(1, Math.hypot(dx, dz) / (this.settings.worldSize / 2));
+    } else { out[S.memFoodSin] = 0; out[S.memFoodCos] = 0; out[S.memFoodDist] = 1; }
     senseBody(this, c, out, S);
     return out;
   }
@@ -219,6 +228,9 @@ export class World {
     }
     if (loudest) out[S.hearKin] = relatedness(c.genome, loudest.genome);
     c.heard = loudest ? loudest.syll : -1;
+    // The loudest speaker's word so far: its last syllables, as many as this listener can attend to.
+    const word = loudest ? loudest.word : null, span = word ? Math.min(word.length, c.stats.attention) : 0;
+    for (let i = 0; i < 6; i++) out[S[`heard${i}`]] = i < span ? (word[word.length - span + i] + 1) / 4 : 0;
   }
 
   rebuildGrids() {
@@ -313,7 +325,7 @@ export class World {
       if ((this.stepCount & 7) === 0) this.tracker.noteContext(c, this.callContext(c), this.stepCount); // base rates, sampled
       // Dead-zone: a drifting unwired output (≈0.5) must not murmur constantly.
       if (o[4] > CALL_ON) this.call(c, (o[4] - CALL_ON) / (1 - CALL_ON), (o[5] > 0.5 ? 1 : 0) + (o[6] > 0.5 ? 2 : 0));
-      else c.said = -1;
+      else { c.said = -1; this.endWord(c); }
       if (o[3] >= 0.5) this.reproduce(c); // unwired output (0.5) = willing; brains can evolve restraint
       c.age += dt;
     }
@@ -376,20 +388,35 @@ export class World {
 
   // Calling costs energy and can be overheard by anyone, predators included.
   call(c, loud, syll) {
+    // Consecutive syllables form a word, up to the attention span; a silent step ends it.
+    const w = c.word || (c.word = []);
+    if (!w.length || w[w.length - 1] !== syll || ++c.wordHold >= WORD_HOLD) {
+      if (w.length < c.stats.attention) c.word = [...w, syll]; // new array: heard records keep their copy
+      c.wordHold = 0;
+    }
     const cost = CALL_COST * loud * this.settings.dt;
     c.energy -= cost;
     c.normalCost += cost; // a chosen action, not a punishment
-    this.newCalls.push({ x: c.x, z: c.z, syll, loud, id: c.id, genome: c.genome });
+    this.newCalls.push({ x: c.x, z: c.z, syll, loud, id: c.id, genome: c.genome, word: c.word });
     this.callCounts[syll]++;
     c.said = syll;
     this.tracker.noteCall(c, syll, this.callContext(c), this.stepCount);
   }
 
-  // What was going on when a creature called: threat seen, food seen, kin nearby.
+  endWord(c) {
+    if (!c.word || !c.word.length) return;
+    c.lastWord = c.word;
+    if (c.word.length > 1) this.tracker.noteWord(c, c.word.map((k) => SYLLABLES[k]).join('-'), this.callContext(c), this.stepCount);
+    c.word = [];
+  }
+
+  // What was going on when a creature called: threat seen, food seen, kin nearby; where it is and
+  // which compass direction its best remembered food lies in (what a word might describe).
   callContext(c) {
     let food = false;
     for (let r = 0; r < RAY_CAP; r++) if (inp[r * 3] > 0.3) { food = true; break; }
-    return { threat: !!c.threatNear, food, kin: inp[S.kinNear] > 0.6 };
+    const m = c.memFood, dir = m ? OCTANTS[(Math.round(Math.atan2(this.delta(c.z, m.z), this.delta(c.x, m.x)) / (Math.PI / 4)) + 8) % 8] : null;
+    return { threat: !!c.threatNear, food, kin: inp[S.kinNear] > 0.6, biome: this.biomeOf(c).key, dir };
   }
 
   // Speed multiplier from biome, water and slope; 0 when a slope is too steep to climb.
@@ -545,6 +572,13 @@ export class World {
       this.spawn(g, p.x, p.z);
     }
   }
+}
+
+// Centre of the best remembered food cell (null if nothing worth remembering).
+function bestFood(m) {
+  let best = 12, k = -1; // ≈0.1 of full strength
+  for (let i = 0; i < m.food.length; i++) if (m.food[i] > best) { best = m.food[i]; k = i; }
+  return k < 0 ? null : { x: (k % m.n + 0.5) * m.cell, z: (Math.floor(k / m.n) + 0.5) * m.cell };
 }
 
 function predatorGenome(src) {

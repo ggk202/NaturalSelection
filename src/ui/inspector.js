@@ -6,7 +6,7 @@ import { SYLLABLES } from '../sim/species.js';
 import { drawBrainGraph } from './brain-graph.js';
 
 const POS = '#3987e5', NEG = '#d95926';
-const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'swim', 'climb', 'flight', 'camo', 'endurance', 'dexterity', 'balance', 'mass', 'upkeep', 'maxEnergy'];
+const STAT_KEYS = ['speed', 'senseRange', 'attack', 'defense', 'swim', 'climb', 'flight', 'camo', 'endurance', 'dexterity', 'balance', 'attention', 'mass', 'upkeep', 'maxEnergy'];
 const fmt = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
 
 export function mountInspector(root, app) {
@@ -63,7 +63,8 @@ export function mountInspector(root, app) {
       ['intelligence', intelligence(b).toFixed(1)], ['learning rate', (b.lr || 0).toFixed(3)],
       ['neurons / links', `${b.nodes.filter((n) => n.type === 'hid').length} / ${b.conns.filter((k) => k.on).length}`],
       ['nearest seen is kin', kin == null ? '–' : `${Math.round(kin * 100)}%`],
-      ['saying', syl(c.said ?? -1)], ['hearing', syl(c.heard ?? -1)], ['species words', lex || 'none yet'],
+      ['saying', c.word && c.word.length ? c.word.map(syl).join('-') : syl(c.said ?? -1)], ['last word', c.lastWord ? c.lastWord.map(syl).join('-') : '–'],
+      ['holding', c.held != null ? (app.world.objects.find((o) => o.id === c.held)?.type ?? '–') : '–'], ['in shelter', c.sheltered ? 'yes' : 'no'], ['hearing', syl(c.heard ?? -1)], ['species words', lex || 'none yet'],
     ].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v))));
     stats.replaceChildren(...STAT_KEYS.map((k) => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c.stats[k])))));
     lastLabels = drawBrainGraph(brain, c.genome.brain, c.brainState);

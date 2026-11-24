@@ -72,3 +72,9 @@ button:disabled { opacity: .4; }
 #ff .row input[type=number] { grid-column: 1 / -1; }
 #ff small { color: var(--muted); }
 #ff-progress small { color: var(--muted); max-width: 60vw; }
+
+#bubbles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.bubble { position: absolute; left: 0; top: 0; background: rgba(255, 255, 255, 0.92); color: #222; border-radius: 10px; padding: 3px 8px; font: 12px/1.25 system-ui, sans-serif; text-align: center; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+.bubble b { display: block; font-size: 13px; }
+.bubble span { color: #555; font-style: italic; }
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: rgba(255, 255, 255, 0.92); }

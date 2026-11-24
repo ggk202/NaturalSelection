@@ -9,7 +9,9 @@ export const SCALARS = ['energy', 'temperature', 'tempGradient', 'biomeFood', 'b
   'osc0s', 'osc0c', 'osc1s', 'osc1c', 'osc2s', 'osc2c', 'upY', 'pitch', 'roll', 'fwdSpeed', 'stamina',
   ...Array.from({ length: 24 }, (_, j) => `joint${j}`), ...Array.from({ length: 24 }, (_, j) => `touch${j}`),
   // Tool use: nearest loose object, what is held, a nut in reach, standing in a shelter.
-  'objDist', 'objAngle', 'objType', 'holding', 'nutNear', 'sheltered'];
+  'objDist', 'objAngle', 'objType', 'holding', 'nutNear', 'sheltered',
+  // Language: the loudest speaker's word (last syllables, up to the listener's attention), a compass, and a remembered food place.
+  'heard0', 'heard1', 'heard2', 'heard3', 'heard4', 'heard5', 'compassSin', 'compassCos', 'memFoodSin', 'memFoodCos', 'memFoodDist'];
 export const N_IN = RAY_CAP * RAY_CHANNELS.length + SCALARS.length;
 export const MAX_JOINTS = 24; // joint motor outputs j0..j23 (physical bodies)
 export const OUTPUTS = ['turn', 'throttle', 'attack', 'reproduce', 'call', 'syllA', 'syllB', ...Array.from({ length: MAX_JOINTS }, (_, j) => `j${j}`), 'grab', 'drop', 'use'];
@@ -31,7 +33,7 @@ function ioNodes() {
 // Input ids a creature with `rays` rays can actually use (ray slots are centre-out, so slots < rays).
 // Social senses (kin, hearing) are silent for founders, so founder links skip them; mutation can add them.
 // Body senses are silent in kinematic mode, so founders there skip them too.
-const SOCIAL = new Set(['kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin']);
+const SOCIAL = new Set(['kinNear', 'hear0', 'hear1', 'hear2', 'hear3', 'hearSin', 'hearCos', 'hearKin', 'heard0', 'heard1', 'heard2', 'heard3', 'heard4', 'heard5']);
 const BODY_SENSE = (name) => /^(osc|joint|touch)|^(upY|pitch|roll|fwdSpeed|stamina)$/.test(name);
 export const usableInputs = (rays, physical = false) => [...Array.from({ length: Math.min(rays, RAY_CAP) * 3 }, (_, i) => i),
   ...SCALARS.flatMap((name, i) => (SOCIAL.has(name) || (!physical && BODY_SENSE(name)) ? [] : [RAY_CAP * 3 + i]))];

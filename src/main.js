@@ -9,6 +9,7 @@ import { mountControls, worldSettings } from './ui/controls.js';
 import { mountCharts } from './ui/charts.js';
 import { mountInspector } from './ui/inspector.js';
 import { mountGodMode } from './ui/godmode.js';
+import { mountBubbles } from './ui/bubbles.js';
 
 const AUTOSAVE_MS = 60000;
 const STEP_BUDGET_MS = 12; // leaves room for rendering within a 30fps frame
@@ -98,6 +99,7 @@ app.ui.inspector = mountInspector(ui, app);
 app.ui.godmode = mountGodMode(ui, app, view, canvas);
 app.ui.runs = mountRuns(ui, app);
 app.ui.ff = mountFastForward(ui, app);
+app.ui.bubbles = mountBubbles(app, view);
 if (bootError) app.ui.runs.toast(`Couldn’t resume last run (${bootError}); started a new one.`);
 if (!runs.ok) app.onStorageError(runs.error);
 
@@ -119,6 +121,7 @@ function frame(now) {
   if (app.followId != null) view.follow(w.find(app.followId));
   view.showMemory(app.memoryId != null ? w.find(app.memoryId) : null);
   view.render(w);
+  app.ui.bubbles.update(w);
   window.__frames++;
   window.__fps = 1000 / frameMsAvg;
   if (now - lastSave > AUTOSAVE_MS) { lastSave = now; app.save(); }

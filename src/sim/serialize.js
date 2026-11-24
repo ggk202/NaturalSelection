@@ -8,7 +8,7 @@ import { createPhysics } from './physics.js';
 import { expandBody } from './bodyplan.js';
 import { PHYS_PARTS } from './creature-physics.js';
 
-export const SCHEMA_VERSION = 7; // 6: body plans; 7: objects, tool-use brain I/O
+export const SCHEMA_VERSION = 8; // 6: body plans; 7: objects, tool-use brain I/O; 8: words
 
 const g2j = (g) => ({ body: cloneBodyPlan(g.body), brain: cloneBrain(g.brain) });
 const j2g = g2j;

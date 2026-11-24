@@ -435,3 +435,19 @@ checks['objects render, held ones with their holder'] = async ({ page, base, ass
   assert.ok(r.spear >= 1 && r.stone >= 1, JSON.stringify(r));
   assert.deepEqual(errors, []);
 };
+
+checks['speech bubbles show words and translations'] = async ({ page, base, assert, errors }) => {
+  await boot(page, base);
+  const r = await page.evaluate(async () => {
+    window.__app.paused = true;
+    const w = window.__world, c = w.creatures[0];
+    window.__view.follow(c);
+    const sp = w.tracker.species.find((s) => s.id === c.speciesId) || (w.tracker.species[0] ||= { id: 1 });
+    c.speciesId = sp.id; sp.lexicon = { 'mi-to': ['food', 'north'] };
+    w.calls = [{ x: c.x, z: c.z, syll: 3, loud: 1, id: c.id, genome: c.genome, word: [2, 3] }];
+    await new Promise((res) => setTimeout(res, 400));
+    return [...document.querySelectorAll('.bubble:not([hidden])')].map((b) => b.textContent);
+  });
+  assert.ok(r.some((t) => t.includes('mi-to') && t.includes('food, north')), JSON.stringify(r));
+  assert.deepEqual(errors, []);
+};
