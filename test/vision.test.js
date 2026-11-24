@@ -8,7 +8,7 @@ import { genome, quiet } from './helpers.js';
 
 const buf = () => new Float32Array(RAY_CAP * 3);
 const ch = (out, ray, k) => out[ray * 3 + k]; // k: 0 food, 1 creature, 2 obstacle
-const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false } };
+const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, apexMin: 0, env: { hazards: false, seasons: false } };
 
 function interior(w, key) {
   const t = w.terrain, id = BIOME[key];

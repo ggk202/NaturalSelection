@@ -8,7 +8,7 @@ import { BIOMES, BIOME } from '../src/sim/biomes.js';
 import { genome } from './helpers.js';
 import { deriveStats } from '../src/sim/body.js';
 
-const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false } };
+const T = { seed: 1, initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, apexMin: 0, env: { hazards: false, seasons: false } };
 
 // Center of a cell whose 7x7 neighbourhood is entirely the given biome.
 function interior(w, key, skip = 0) {

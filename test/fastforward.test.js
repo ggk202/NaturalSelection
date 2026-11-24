@@ -20,7 +20,7 @@ test('returns null when the chunk ends first, and continues on the next call', (
 });
 
 test('population below / above', () => {
-  const w = W({ respawnMin: 0 }), c = clock();
+  const w = W({ respawnMin: 0, apexMin: 0 }), c = clock();
   for (const k of w.creatures.slice(5)) w.killCreature(k.id);
   assert.equal(runUntil(w, { popBelow: 10 }, { maxSteps: 10, now: c.now, startReal: 0, startTime: 0 }).reason, 'population');
   const v = W(), c2 = clock();

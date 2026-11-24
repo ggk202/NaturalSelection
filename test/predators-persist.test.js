@@ -26,7 +26,7 @@ test('seeded predators persist for 4 sim-minutes (predator assist)', () => {
 });
 
 test('predator assist off: none are respawned', () => {
-  const w = new World({ seed: 1, predatorMin: 0 });
+  const w = new World({ seed: 1, predatorMin: 0, apexMin: 0 });
   w.seedPredators(5);
   for (const c of w.creatures) if (c.genome.body.diet > 0.5) w.killCreature(c.id);
   w.step();

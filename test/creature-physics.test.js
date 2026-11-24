@@ -6,7 +6,7 @@ import { N_IN, INPUT_NAMES, OUTPUTS } from '../src/sim/neat.js';
 import { biasBrain } from './helpers.js';
 import { serializeWorld, deserializeWorld } from '../src/sim/serialize.js';
 
-const P = { seed: 1, worldSize: 100, flat: true, locomotion: 'physical', initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false, temperature: false } };
+const P = { seed: 1, worldSize: 100, flat: true, locomotion: 'physical', initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, apexMin: 0, env: { hazards: false, seasons: false, temperature: false } };
 const plan = (name) => ({ ...TEMPLATES[name](), diet: 0, hue: 0.4, reproThreshold: 0.9 });
 const J = (j) => N_IN + OUTPUTS.indexOf(`j${j}`);
 

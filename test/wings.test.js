@@ -34,14 +34,14 @@ test('wings give flight, fins give swim', () => {
 });
 
 test('kinematic flyers cross water at land speed and do not drown', () => {
-  const w = new World({ seed: 2, worldSize: 100, initialCreatures: 0, respawnMin: 0, predatorMin: 0 });
+  const w = new World({ seed: 2, worldSize: 100, initialCreatures: 0, respawnMin: 0, predatorMin: 0, apexMin: 0 });
   const c = w.spawn({ body: winged(), brain: biasBrain({ reproduce: -10 }) }, 50, 50);
   assert.equal(w.terrainSpeed(c), 1);
   assert.equal(w.biomeDrain(c, { id: 3, drain: 5 }), 0);
 });
 
 test('a falling wing plate descends slower than a wingless one', () => {
-  const P = { seed: 1, worldSize: 100, flat: true, locomotion: 'physical', initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, env: { hazards: false, seasons: false, temperature: false } };
+  const P = { seed: 1, worldSize: 100, flat: true, locomotion: 'physical', initialCreatures: 0, foodRate: 0, maxFood: 0, respawnMin: 0, predatorMin: 0, apexMin: 0, env: { hazards: false, seasons: false, temperature: false } };
   const fall = (body) => {
     const w = new World(P), c = w.spawn({ body, brain: biasBrain({ reproduce: -10 }) }, 50, 50);
     for (const h of c.ph.bodies) { const b = w.physics.world.getRigidBody(h), t = b.translation(); b.setTranslation({ x: t.x, y: t.y + 20, z: t.z }, true); }

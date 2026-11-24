@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS = {
   seed: 1, locomotion: 'kinematic', // 'physical': jointed bodies driven by muscles (Rapier)
   worldSize: 200, waterLevel: 0.22, flat: false, initialCreatures: 80, maxCreatures: 400,
   maxRays: 9, mapCell: 10, foodRate: 16, maxFood: 1200, foodEnergy: 4, mutationRate: 0.08, dt: 1 / 20, // food: same density per unit² as v1 on a 4× larger world
+  apexMin: 8, // rival apex lineage: carnivores kept at least this many from the start (0 = off)
   predatorMin: 5, // once carnivores exist, refill them from the best hunters below this (0 = off)
   respawnMin: 15, // bootstrap assist: refill from elite parents when population drops below this (0 = off)
 };
@@ -482,7 +483,9 @@ export class World {
     c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.8 * dmg * c.stats.digestMeat); // feeding while biting
     if (target.energy > 0) return;
     target.alive = false;
-    c.energy = Math.min(c.stats.maxEnergy, c.energy + 0.25 * target.stats.maxEnergy * c.stats.digestMeat); // kept small: bigger bonuses create energy from nothing via cannibalism
+    // A carcass feeds a hunter well; eating other carnivores pays little, or predators could live off each other.
+    const meat = traitsOf(target.genome).diet > 0.5 ? 0.25 : 0.6;
+    c.energy = Math.min(c.stats.maxEnergy, c.energy + meat * target.stats.maxEnergy * c.stats.digestMeat);
     c.kills++;
     this.emit({ type: 'kill', killerId: c.id, victimId: target.id });
     this.emit({ type: 'death', id: target.id, cause: 'killed' });
@@ -559,13 +562,15 @@ export class World {
 
   respawn() {
     const s = this.settings, W = s.worldSize;
-    if (this.carnivoresSeen && s.predatorMin > 0) {
+    const apex = s.apexMin > 0 ? Math.max(1, Math.round(s.apexMin * this.areaScale)) : 0; // per 200×200 area
+    const minCarn = Math.min(Math.max(apex, this.carnivoresSeen ? s.predatorMin : 0), Math.max(1, Math.floor(this.creatures.length / 4))); // never most of a crashed population
+    if (minCarn > 0) {
       let carn = 0;
       for (const c of this.creatures) if (traitsOf(c.genome).diet > 0.5) carn++;
-      for (; carn < s.predatorMin && this.creatures.length < s.maxCreatures; carn++) {
+      for (; carn < minCarn && this.creatures.length < s.maxCreatures; carn++) {
         const g = this.eliteCarn.length
           ? mutate(this.eliteCarn[this.rng.int(0, this.eliteCarn.length - 1)].genome, s.mutationRate, this.rng, this.nodeIds, { physical: !!this.physics })
-          : predatorGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng, !!this.physics));
+          : apexGenome(this.creatures.length ? this.creatures[this.rng.int(0, this.creatures.length - 1)].genome : randomGenome(this.rng, !!this.physics), this.rng);
         g.body.diet = Math.max(g.body.diet ?? 0, 0.55);
         const p = this.randomLandPoint();
         this.spawn(g, p.x, p.z);
@@ -593,6 +598,21 @@ function predatorGenome(src) {
   g.body.diet = 0.9;
   const mouths = g.body.nodes.filter((n) => n.mouth > 0);
   for (const n of mouths.length ? mouths : [g.body.nodes[0]]) n.mouth = Math.max(n.mouth, 1.2);
+  return g;
+}
+
+// Seed of the rival apex lineage: a bigger, big-mouthed carnivore with a hunting instinct
+// (a creature seen ahead → go and bite; seen to one side → turn toward it). Evolution may undo any of it.
+function apexGenome(src, rng) {
+  const g = predatorGenome(src);
+  for (const n of g.body.nodes) n.size = n.size.map((v) => v * 1.2);
+  const ray = (slot) => slot * 3 + 1; // creature channel of a ray slot (0 ahead, 1 left, 2 right)
+  const out = (name) => N_IN + OUTPUTS.indexOf(name);
+  const links = [[ray(0), 'throttle', 2], [ray(0), 'attack', 3], [ray(1), 'turn', -2], [ray(2), 'turn', 2], [ray(1), 'throttle', 1], [ray(2), 'throttle', 1]];
+  for (const [from, to, w] of links) {
+    g.brain.conns = g.brain.conns.filter((k) => !(k.from === from && k.to === out(to)));
+    g.brain.conns.push({ from, to: out(to), w: w * rng.range(0.8, 1.2), on: true, p: 0 });
+  }
   return g;
 }
 

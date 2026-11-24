@@ -15,6 +15,7 @@ const FIELDS = [
     ['initialCreatures', 'Starting creatures', 10, 300, 10, false],
     ['maxCreatures', 'Max creatures', 50, 600, 10, true],
     ['respawnMin', 'Respawn assist (min pop, 0 = off)', 0, 50, 1, true],
+    ['apexMin', 'Apex predators kept alive from the start (per 200×200 area, 0 = off)', 0, 30, 1, true],
     ['predatorMin', 'Predator assist (min carnivores once they exist, 0 = off)', 0, 30, 1, true],
     ['mutationRate', 'Mutation rate', 0, 0.5, 0.01, true],
   ]],
